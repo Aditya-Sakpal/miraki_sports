@@ -1,0 +1,7 @@
+backend/.env
+backend/node_modules
+backend/test.js
+backend/uploadPublicKey.js
+backend/uploadPublicKeyFromFile.js
+frontend/node_modules
+frontend/.env
