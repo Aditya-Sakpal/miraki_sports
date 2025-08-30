@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Users, Mail, Trophy } from "lucide-react";
+import { Send, Users, Mail, Trophy, MessageCircle } from "lucide-react";
 
 interface Winner {
   name: string;
@@ -54,7 +54,7 @@ export default function Broadcasts() {
     if (winners.length === 0) {
       toast({
         title: "No winners available",
-        description: "Please select winners first before sending emails.",
+        description: "Please select winners first before sending notifications.",
         variant: "destructive"
       });
       return;
@@ -77,15 +77,15 @@ export default function Broadcasts() {
       const result = await response.json();
       
       toast({
-        title: "🎉 Emails sent successfully!",
-        description: result.message || `Congratulations emails sent to ${result.emailsSent} winner(s)!`
+        title: "🎉 Notifications sent successfully!",
+        description: result.message || `Congratulations sent to ${result.totalWinners} winner(s)!`
       });
 
     } catch (error) {
       console.error('Error sending winner emails:', error);
       toast({
-        title: "Error sending emails",
-        description: error.message || "Failed to send winner emails. Please try again.",
+        title: "Error sending notifications",
+        description: error.message || "Failed to send winner notifications. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -99,12 +99,12 @@ export default function Broadcasts() {
       <main className="p-4 space-y-6">
         <h1 className="sr-only">Broadcast Messages</h1>
         
-        {/* Winner Email Broadcasting Section */}
+        {/* Winner Notifications Broadcasting Section */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Trophy className="h-5 w-5 text-yellow-500" />
-              Send Winner Congratulations Emails
+              Send Winner Congratulations
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -117,7 +117,7 @@ export default function Broadcasts() {
                 <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground mb-2">No winners selected yet</p>
                 <p className="text-sm text-muted-foreground">
-                  Please select winners from the dashboard first to send congratulations emails.
+                  Please select winners from the dashboard first to send congratulations via email and WhatsApp.
                 </p>
               </div>
             ) : (
@@ -129,7 +129,11 @@ export default function Broadcasts() {
                   </Badge>
                   <Badge variant="outline" className="flex items-center gap-1">
                     <Mail className="h-3 w-3" />
-                    Ready to Send
+                    Email Ready
+                  </Badge>
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <MessageCircle className="h-3 w-3" />
+                    WhatsApp Ready
                   </Badge>
                 </div>
 
@@ -151,16 +155,38 @@ export default function Broadcasts() {
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium">Email Template Preview:</Label>
-                  <div className="mt-2 p-4 bg-muted/30 rounded-lg border">
-                    <div className="text-sm space-y-2">
-                      <p className="font-medium">Subject: 🎉 Congratulations! You're a Winner - Maidan 72 Club</p>
-                      <Separator />
-                      <div className="text-muted-foreground">
-                        <p>• Personalized congratulations message</p>
-                        <p>• Winner details (name, code, city)</p>
-                        <p>• Instructions to claim prize</p>
-                        <p>• Professional HTML email template</p>
+                  <Label className="text-sm font-medium">Notification Templates Preview:</Label>
+                  <div className="mt-2 space-y-3">
+                    {/* Email Template Preview */}
+                    <div className="p-4 bg-muted/30 rounded-lg border">
+                      <div className="text-sm space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-blue-500" />
+                          <p className="font-medium">Email Template</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Subject: 🎉 Congratulations! You're a Winner - Maidan 72 Club</p>
+                        <Separator />
+                        <div className="text-muted-foreground text-xs">
+                          <p>• Professional HTML email with winner details</p>
+                          <p>• Personalized congratulations message</p>
+                          <p>• Instructions to claim prize</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* WhatsApp Template Preview */}
+                    <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                      <div className="text-sm space-y-2">
+                        <div className="flex items-center gap-2">
+                          <MessageCircle className="h-4 w-4 text-green-600" />
+                          <p className="font-medium text-green-800">WhatsApp Message</p>
+                        </div>
+                        <Separator />
+                        <div className="text-green-700 text-xs">
+                          <p>• Instant congratulations message with emojis</p>
+                          <p>• Winner details (name, code, city)</p>
+                          <p>• Clear next steps and contact information</p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -173,7 +199,7 @@ export default function Broadcasts() {
                     className="flex items-center gap-2"
                   >
                     <Send className="h-4 w-4" />
-                    {loading ? "Sending Emails..." : `Send Emails to ${winners.length} Winner${winners.length !== 1 ? 's' : ''}`}
+                    {loading ? "Sending Notifications..." : `Send Notifications to ${winners.length} Winner${winners.length !== 1 ? 's' : ''}`}
                   </Button>
                 </div>
               </>
