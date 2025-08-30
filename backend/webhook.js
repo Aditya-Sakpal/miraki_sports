@@ -6,7 +6,15 @@ import pool from "./db.js"; // ✅ Import db connection
 import OpenAI from "openai";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from 'url';
+import FormData from 'form-data';
 dotenv.config();
+
+// Get current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -205,6 +213,90 @@ async function sendText(to, body) {
     
     // Re-throw the error so calling functions can handle it
     throw new Error(`WhatsApp API Error: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
+async function sendVideoMessage(to, videoPath, caption = '') {
+  try {
+    if (!to || !videoPath) {
+      throw new Error('Phone number and video path are required');
+    }
+    
+    if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
+      throw new Error('WhatsApp credentials not configured');
+    }
+
+    // Check if video file exists
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`Video file not found: ${videoPath}`);
+    }
+
+    // Get file stats for validation
+    const stats = fs.statSync(videoPath);
+    const fileSizeInMB = stats.size / (1024 * 1024);
+    
+    // WhatsApp has a 16MB limit for videos
+    if (fileSizeInMB > 16) {
+      throw new Error(`Video file too large: ${fileSizeInMB.toFixed(2)}MB (max 16MB)`);
+    }
+
+    console.log(`📹 Sending video (${fileSizeInMB.toFixed(2)}MB) to ${to}`);
+    
+    // Step 1: Upload media to WhatsApp
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(videoPath));
+    formData.append('type', 'video/mp4');
+    formData.append('messaging_product', 'whatsapp');
+
+    const uploadResponse = await axios.post(
+      `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/media`,
+      formData,
+      {
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+          ...formData.getHeaders()
+        },
+        timeout: 30000, // 30 second timeout for video upload
+      }
+    );
+
+    const mediaId = uploadResponse.data.id;
+    console.log(`✅ Video uploaded, media ID: ${mediaId}`);
+
+    // Step 2: Send video message
+    const videoMessagePayload = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "video",
+      video: {
+        id: mediaId,
+        caption: caption
+      }
+    };
+
+    const sendResponse = await axios.post(
+      `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
+      videoMessagePayload,
+      {
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      }
+    );
+
+    console.log(`✅ Video message sent to ${to}`);
+    return { success: true, message: 'Video sent successfully', mediaId };
+
+  } catch (error) {
+    console.error(`❌ Failed to send video to ${to}:`, {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    throw new Error(`WhatsApp Video Error: ${error.response?.data?.error?.message || error.message}`);
   }
 }
 
@@ -459,6 +551,16 @@ app.post("/api/send-winner-emails", async (req, res) => {
 
     console.log(`Sending notifications to ${winners.length} winners`);
 
+    // Get video file path
+    const videoPath = path.join(__dirname, 'sample.mp4');
+    const videoExists = fs.existsSync(videoPath);
+    
+    if (!videoExists) {
+      console.warn('⚠️ Video file sample.mp4 not found. Notifications will be sent without video.');
+    } else {
+      console.log('✅ Video file found, will be included in notifications');
+    }
+
     // Send both emails and WhatsApp messages
     const notificationPromises = winners.map(async (winner) => {
       const winnerData = {
@@ -475,13 +577,16 @@ app.post("/api/send-winner-emails", async (req, res) => {
         email: winnerData.email,
         emailStatus: 'skipped',
         whatsappStatus: 'skipped',
+        videoSent: false,
         errors: []
       };
 
       // Send WhatsApp message if phone number exists
       if (winnerData.phone) {
         try {
-          const whatsappMessage = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
+          // If video exists, send video with congratulations as caption
+          if (videoExists) {
+            const videoCaption = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
 
 🏆 You're a WINNER in the Maidan 72 Club contest!
 
@@ -498,9 +603,43 @@ Thank you for participating in Maidan 72 Club! 🏏
 *Best regards,*
 Maidan 72 Club Team`;
 
-          await sendText(winnerData.phone, whatsappMessage);
-          results.whatsappStatus = 'sent';
-          console.log(`📱 WhatsApp sent successfully to ${winnerData.name} (${winnerData.phone})`);
+            try {
+              await sendVideoMessage(winnerData.phone, videoPath, videoCaption);
+              results.whatsappStatus = 'sent';
+              results.videoSent = true;
+              console.log(`📱🎥 WhatsApp video with congratulations sent to ${winnerData.name} (${winnerData.phone})`);
+            } catch (videoError) {
+              console.error(`❌ Failed to send video, falling back to text message:`, videoError.message);
+              // Fallback to text message if video fails
+              await sendText(winnerData.phone, videoCaption);
+              results.whatsappStatus = 'sent';
+              results.videoSent = false;
+              results.errors.push(`Video failed, sent text instead: ${videoError.message}`);
+              console.log(`📱 WhatsApp text sent as fallback to ${winnerData.name}`);
+            }
+          } else {
+            // Send regular text message if no video
+            const whatsappMessage = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
+
+🏆 You're a WINNER in the Maidan 72 Club contest!
+
+✅ *Your Winner Details:*
+👤 Name: ${winnerData.name}
+🎫 Winning Code: *${winnerData.code}*
+🏙️ City: ${winnerData.city}
+
+🎯 *What's Next?*
+Please contact us as soon as possible to claim your prize. Keep your winning code safe as you'll need it for verification.
+
+Thank you for participating in Maidan 72 Club! 🏏
+
+*Best regards,*
+Maidan 72 Club Team`;
+
+            await sendText(winnerData.phone, whatsappMessage);
+            results.whatsappStatus = 'sent';
+            console.log(`📱 WhatsApp sent successfully to ${winnerData.name} (${winnerData.phone})`);
+          }
         } catch (error) {
           results.whatsappStatus = 'failed';
           results.errors.push(`WhatsApp: ${error.message}`);
@@ -530,6 +669,13 @@ Maidan 72 Club Team`;
                   <p style="margin: 5px 0;"><strong>Registration City:</strong> ${winnerData.city}</p>
                 </div>
                 
+                ${videoExists ? `
+                <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+                  <h3 style="color: #92400e; margin-top: 0;">🎬 Special Winner Video!</h3>
+                  <p style="margin: 5px 0; color: #92400e;">We've attached a special congratulations video just for you! Please download and watch it to get important information about your prize.</p>
+                </div>
+                ` : ''}
+                
                 <p style="color: #333; line-height: 1.6;">
                   Please contact us as soon as possible to claim your prize. Make sure to keep your winning code safe as you'll need it for verification.
                 </p>
@@ -548,6 +694,17 @@ Maidan 72 Club Team`;
             </div>
           `
         };
+
+        // Add video attachment if it exists
+        if (videoExists) {
+          mailOptions.attachments = [
+            {
+              filename: 'congratulations-video.mp4',
+              path: videoPath,
+              contentType: 'video/mp4'
+            }
+          ];
+        }
 
         try {
           await transporter.sendMail(mailOptions);
@@ -570,11 +727,13 @@ Maidan 72 Club Team`;
     const emailsFailed = notificationResults.filter(result => result.emailStatus === 'failed').length;
     const whatsappSent = notificationResults.filter(result => result.whatsappStatus === 'sent').length;
     const whatsappFailed = notificationResults.filter(result => result.whatsappStatus === 'failed').length;
+    const videosSent = notificationResults.filter(result => result.videoSent === true).length;
     
     // Create summary message
     const emailMessage = emailsSent > 0 ? `${emailsSent} email(s) sent` : '';
     const whatsappMessage = whatsappSent > 0 ? `${whatsappSent} WhatsApp message(s) sent` : '';
-    const successMessages = [emailMessage, whatsappMessage].filter(Boolean);
+    const videoMessage = videosSent > 0 ? `${videosSent} video notification(s) sent` : '';
+    const successMessages = [emailMessage, whatsappMessage, videoMessage].filter(Boolean);
     
     const failureMessage = [];
     if (emailsFailed > 0) failureMessage.push(`${emailsFailed} email(s) failed`);
@@ -582,10 +741,14 @@ Maidan 72 Club Team`;
     
     let message = 'Congratulations notifications sent successfully!';
     if (successMessages.length > 0) {
-      message = `${successMessages.join(' and ')} successfully!`;
+      message = `${successMessages.join(', ')} successfully!`;
     }
     if (failureMessage.length > 0) {
       message += ` ${failureMessage.join(' and ')}.`;
+    }
+    
+    if (videoExists) {
+      message += ` Video attachments included.`;
     }
     
     res.json({
@@ -595,6 +758,8 @@ Maidan 72 Club Team`;
       emailsFailed,
       whatsappSent,
       whatsappFailed,
+      videosSent,
+      videoIncluded: videoExists,
       results: notificationResults,
       message
     });
