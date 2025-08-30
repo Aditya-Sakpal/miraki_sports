@@ -614,6 +614,10 @@ app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
+app.get("/",(req,res)=> {
+  res.send("Hello World");
+})
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log("- GET /webhook: Webhook verification");
