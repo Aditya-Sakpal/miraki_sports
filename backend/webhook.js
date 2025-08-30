@@ -13,8 +13,8 @@ import FormData from 'form-data';
 dotenv.config();
 
 // Get current directory for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename= fileURLToPath(import.meta.url);
+const __dirname= path.dirname(__filename);
 
 const app = express();
 
@@ -77,7 +77,7 @@ IMPORTANT: Users may provide information in conversational format or complete se
 
 Examples:
 - "here's my email: aditya.sakpal2081@gmail.com" → extract "aditya.sakpal2081@gmail.com"
-- "My name is John Smith" → extract "John Smith"
+- "My nameis John Smith" → extract "John Smith"
 - "I live in Mumbai, India" → extract "Mumbai"
 - "The code is ABC123" → extract "ABC123"
 
@@ -89,9 +89,9 @@ For each validation, return a JSON response with:
 }
 
 Validation rules:
-- NAME: Minimum 2 characters, no numbers or special characters except spaces, hyphens, apostrophes. Extract the actual name from conversational text.
+- NAME: Minimum 2 characters, no numbers or special characters except spaces, hyphens, apostrophes. Extract the actual namefrom conversational text.
 - EMAIL: Valid email format ONLY. Extract email address from any text that contains it. Do NOT check if email exists or is already registered.
-- CITY: Must be a city in India. Extract city name from conversational text, even if mentioned with state/country.
+- CITY: Must be a city in India. Extract city namefrom conversational text, even if mentioned with state/country.
 - CODE: Must be exactly 6 characters, alphanumeric combination of letters and numbers. Extract the code from conversational text. Do NOT check if code exists in database.
 
 If valid:
@@ -169,7 +169,7 @@ function validateCity(input) {
       return false;
     }
     
-    return indianCities.some(c => c.name && c.name.toLowerCase() === normalized);
+    return indianCities.some(c => c.name&& c.name.toLowerCase() === normalized);
   } catch (error) {
     console.error('Error validating city:', error.message);
     return false;
@@ -307,7 +307,7 @@ async function updateCodeInDatabase({ phone, name, email, city, code }) {
     // Update the codes table with user details and mark as inactive
     const result = await pool.query(
       `UPDATE codes 
-       SET phone_number = $1, "name " = $2, email = $3, city = $4, status = 'inactive', created_at = NOW()
+       SET phone_number = $1, "name" = $2, email = $3, city = $4, status = 'inactive', created_at = NOW()
        WHERE code = $5 AND status = 'active'
        RETURNING *`,
       [phone, name, email, city, code]
@@ -358,14 +358,14 @@ app.get("/api/stats", async (req, res) => {
 
     // Get winners from database
     const winnersResult = await pool.query(
-      `SELECT "name " as name, phone_number as phone, city
+      `SELECT "name" as name, phone_number as phone, city
        FROM codes 
        WHERE status = 'inactive' AND is_winner = true
        ORDER BY created_at DESC`
     );
     console.log("winnersResult",winnersResult);
     const winnersSelected = winnersResult.rows.map(row => ({
-      name: row.name ? row.name.trim() : 'N/A',
+      name: row.name? row.name.trim() : 'N/A',
       phone: row.phone || 'N/A',
       city: row.city || 'N/A'
     }));
@@ -449,7 +449,7 @@ app.get("/api/recent-activity", async (req, res) => {
     const recentActivityResult = await pool.query(
       `SELECT 
         code_id as id,
-        "name " as name,
+        "name" as name,
         phone_number as phone,
         city,
         email,
@@ -459,7 +459,7 @@ app.get("/api/recent-activity", async (req, res) => {
         DATE(created_at) as date
        FROM codes 
        WHERE status = 'inactive' 
-         AND "name " IS NOT NULL 
+         AND "name" IS NOT NULL 
          AND phone_number IS NOT NULL 
          AND city IS NOT NULL
          AND created_at IS NOT NULL
@@ -469,7 +469,7 @@ app.get("/api/recent-activity", async (req, res) => {
     // Format data for the table
     const entries = recentActivityResult.rows.map(row => ({
       id: row.id,
-      name: row.name ? row.name.trim() : 'N/A', // Trim whitespace from name
+      name: row.name? row.name.trim() : 'N/A', // Trim whitespace from name
       phone: row.phone || 'N/A',
       city: row.city || 'N/A',
       status: "Registered", // All inactive codes are considered registered
@@ -507,7 +507,7 @@ app.post("/api/update-winners", async (req, res) => {
       `UPDATE codes 
        SET is_winner = true 
        WHERE code_id IN (${placeholders}) AND status = 'inactive'
-       RETURNING code_id, "name ", phone_number, city`,
+       RETURNING code_id, "name", phone_number, city`,
       winnerIds
     );
 
@@ -518,7 +518,7 @@ app.post("/api/update-winners", async (req, res) => {
       updatedCount: updateResult.rows.length,
       winners: updateResult.rows.map(row => ({
         id: row.code_id,
-        name: row.name ? row.name.trim() : 'N/A',
+        name: row.name? row.name.trim() : 'N/A',
         phone: row.phone_number || 'N/A',
         city: row.city || 'N/A'
       }))
@@ -535,7 +535,7 @@ app.post("/api/send-winner-emails", async (req, res) => {
   try {
     // Get all winners from database
     const winnersResult = await pool.query(
-      `SELECT code_id, "name " as name, email, phone_number, city, code
+      `SELECT code_id, "name" as name, email, phone_number, city, code
        FROM codes 
        WHERE status = 'inactive' AND is_winner = true
        ORDER BY created_at DESC`
@@ -564,7 +564,7 @@ app.post("/api/send-winner-emails", async (req, res) => {
     // Send both emails and WhatsApp messages
     const notificationPromises = winners.map(async (winner) => {
       const winnerData = {
-        name: winner.name ? winner.name.trim() : 'Winner',
+        name: winner.name? winner.name.trim() : 'Winner',
         email: winner.email,
         phone: winner.phone_number,
         city: winner.city,
@@ -867,11 +867,11 @@ app.post("/webhook", async (req, res) => {
           await redisClient.hSet(sessionKey, { step: "ASK_EMAIL", name: validation.value });
         }
       } catch (error) {
-        console.error('Error in ASK_NAME step:', error.message);
+        console.error('Error in ASK_namestep:', error.message);
         try {
-          await sendText(from, "⚠️ Sorry, there was an issue processing your name. Please try entering your full name again:");
+          await sendText(from, "⚠️ Sorry, there was an issue processing your name. Please try entering your full nameagain:");
         } catch (fallbackError) {
-          console.error('Failed to send name error message:', fallbackError.message);
+          console.error('Failed to send nameerror message:', fallbackError.message);
         }
       }
     } else if (session.step === "ASK_EMAIL") {
@@ -919,7 +919,7 @@ app.post("/webhook", async (req, res) => {
       } catch (error) {
         console.error('Error in ASK_CITY step:', error.message);
         try {
-          await sendText(from, "⚠️ Sorry, there was an issue processing your city. Please try entering your city name again:");
+          await sendText(from, "⚠️ Sorry, there was an issue processing your city. Please try entering your city nameagain:");
         } catch (fallbackError) {
           console.error('Failed to send city error message:', fallbackError.message);
         }
