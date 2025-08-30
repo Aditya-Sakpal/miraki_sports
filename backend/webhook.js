@@ -23,7 +23,17 @@ app.use((req, res, next) => {
   }
 });
 
-app.use(express.json());
+// Global error handling middleware for JSON parsing
+app.use(express.json({ limit: '10mb' }));
+
+// Global error handler for JSON parsing errors
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('JSON Parse Error:', err.message);
+    return res.status(400).json({ error: 'Invalid JSON format' });
+  }
+  next(err);
+});
 
 const PORT = process.env.PORT || 3001;
 const VERIFY_TOKEN = "VERIFY_TOKEN";
@@ -117,29 +127,85 @@ Validate this input according to the current step requirements.`;
 
 // Legacy validation functions (kept as fallback)
 function validateEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  try {
+    if (!email || typeof email !== 'string') {
+      return false;
+    }
+    
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      return false;
+    }
+    
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+  } catch (error) {
+    console.error('Error validating email:', error.message);
+    return false;
+  }
 }
 
 function validateCity(input) {
-  const normalized = input.trim().toLowerCase();
-  return City.getCitiesOfCountry("IN").some(c => c.name.toLowerCase() === normalized);
+  try {
+    if (!input || typeof input !== 'string') {
+      return false;
+    }
+    
+    const normalized = input.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    
+    const indianCities = City.getCitiesOfCountry("IN");
+    if (!indianCities || indianCities.length === 0) {
+      console.warn('No cities found for India');
+      return false;
+    }
+    
+    return indianCities.some(c => c.name && c.name.toLowerCase() === normalized);
+  } catch (error) {
+    console.error('Error validating city:', error.message);
+    return false;
+  }
 }
 
 async function sendText(to, body) {
-  await axios.post(
-    `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json",
-      },
+  try {
+    if (!to || !body) {
+      throw new Error('Phone number and message body are required');
     }
-  );
+    
+    if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
+      throw new Error('WhatsApp credentials not configured');
+    }
+
+    const response = await axios.post(
+      `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to,
+        text: { body },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000, // 10 second timeout
+      }
+    );
+
+    console.log(`✅ WhatsApp message sent to ${to}`);
+    return response.data;
+  } catch (error) {
+    console.error(`❌ Failed to send WhatsApp message to ${to}:`, {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    // Re-throw the error so calling functions can handle it
+    throw new Error(`WhatsApp API Error: ${error.response?.data?.error?.message || error.message}`);
+  }
 }
 
 async function updateCodeInDatabase({ phone, name, email, city, code }) {
@@ -372,14 +438,14 @@ app.post("/api/update-winners", async (req, res) => {
   }
 });
 
-// API endpoint to send winner emails
+// API endpoint to send winner emails and WhatsApp messages
 app.post("/api/send-winner-emails", async (req, res) => {
   try {
     // Get all winners from database
     const winnersResult = await pool.query(
       `SELECT code_id, "name " as name, email, phone_number, city, code
        FROM codes 
-       WHERE status = 'inactive' AND is_winner = true AND email IS NOT NULL AND email != ''
+       WHERE status = 'inactive' AND is_winner = true
        ORDER BY created_at DESC`
     );
 
@@ -387,235 +453,436 @@ app.post("/api/send-winner-emails", async (req, res) => {
     
     if (winners.length === 0) {
       return res.status(400).json({ 
-        error: "No winners found with valid email addresses" 
+        error: "No winners found" 
       });
     }
 
-    console.log(`Sending emails to ${winners.length} winners`);
+    console.log(`Sending notifications to ${winners.length} winners`);
 
-    // Send actual emails using nodemailer
-    const emailPromises = winners.map(async (winner) => {
-      const emailContent = {
-        to: winner.email,
+    // Send both emails and WhatsApp messages
+    const notificationPromises = winners.map(async (winner) => {
+      const winnerData = {
         name: winner.name ? winner.name.trim() : 'Winner',
+        email: winner.email,
+        phone: winner.phone_number,
         city: winner.city,
         code: winner.code
       };
 
-      const mailOptions = {
-        from: 'aditya.as@somaiya.edu',
-        to: emailContent.to,
-        subject: '🎉 Congratulations! You\'re a Winner - Maidan 72 Club',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
-            <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-              <h1 style="color: #2563eb; text-align: center; margin-bottom: 30px;">🎉 Congratulations ${emailContent.name}!</h1>
-              
-              <p style="font-size: 18px; color: #333; line-height: 1.6;">
-                We are thrilled to inform you that you've been selected as a <strong>winner</strong> in the Maidan 72 Club contest!
-              </p>
-              
-              <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
-                <h3 style="color: #1e40af; margin-top: 0;">Your Winner Details:</h3>
-                <p style="margin: 5px 0;"><strong>Name:</strong> ${emailContent.name}</p>
-                <p style="margin: 5px 0;"><strong>Winning Code:</strong> <span style="background-color: #dbeafe; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-weight: bold;">${emailContent.code}</span></p>
-                <p style="margin: 5px 0;"><strong>Registration City:</strong> ${emailContent.city}</p>
-              </div>
-              
-              <p style="color: #333; line-height: 1.6;">
-                Please contact us as soon as possible to claim your prize. Make sure to keep your winning code safe as you'll need it for verification.
-              </p>
-              
-              <div style="text-align: center; margin: 30px 0;">
-                <p style="font-size: 16px; color: #666;">Thank you for participating in Maidan 72 Club!</p>
-              </div>
-              
-              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-              
-              <div style="text-align: center; color: #666; font-size: 14px;">
-                <p><strong>Best regards,</strong><br>Maidan 72 Club Team</p>
-                <p style="margin-top: 20px; font-size: 12px;">This is an automated message. Please do not reply to this email.</p>
-              </div>
-            </div>
-          </div>
-        `
+      const results = {
+        name: winnerData.name,
+        phone: winnerData.phone,
+        email: winnerData.email,
+        emailStatus: 'skipped',
+        whatsappStatus: 'skipped',
+        errors: []
       };
 
-      try {
-        await transporter.sendMail(mailOptions);
-        console.log(`📧 Email sent successfully to ${emailContent.name} (${emailContent.to})`);
-        
-        return {
-          email: emailContent.to,
-          name: emailContent.name,
-          status: 'sent'
-        };
-      } catch (error) {
-        console.error(`❌ Failed to send email to ${emailContent.to}:`, error.message);
-        return {
-          email: emailContent.to,
-          name: emailContent.name,
-          status: 'failed',
-          error: error.message
-        };
+      // Send WhatsApp message if phone number exists
+      if (winnerData.phone) {
+        try {
+          const whatsappMessage = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
+
+🏆 You're a WINNER in the Maidan 72 Club contest!
+
+✅ *Your Winner Details:*
+👤 Name: ${winnerData.name}
+🎫 Winning Code: *${winnerData.code}*
+🏙️ City: ${winnerData.city}
+
+🎯 *What's Next?*
+Please contact us as soon as possible to claim your prize. Keep your winning code safe as you'll need it for verification.
+
+Thank you for participating in Maidan 72 Club! 🏏
+
+*Best regards,*
+Maidan 72 Club Team`;
+
+          await sendText(winnerData.phone, whatsappMessage);
+          results.whatsappStatus = 'sent';
+          console.log(`📱 WhatsApp sent successfully to ${winnerData.name} (${winnerData.phone})`);
+        } catch (error) {
+          results.whatsappStatus = 'failed';
+          results.errors.push(`WhatsApp: ${error.message}`);
+          console.error(`❌ Failed to send WhatsApp to ${winnerData.phone}:`, error.message);
+        }
       }
+
+      // Send email if email exists
+      if (winnerData.email) {
+        const mailOptions = {
+          from: 'aditya.as@somaiya.edu',
+          to: winnerData.email,
+          subject: '🎉 Congratulations! You\'re a Winner - Maidan 72 Club',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+              <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h1 style="color: #2563eb; text-align: center; margin-bottom: 30px;">🎉 Congratulations ${winnerData.name}!</h1>
+                
+                <p style="font-size: 18px; color: #333; line-height: 1.6;">
+                  We are thrilled to inform you that you've been selected as a <strong>winner</strong> in the Maidan 72 Club contest!
+                </p>
+                
+                <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+                  <h3 style="color: #1e40af; margin-top: 0;">Your Winner Details:</h3>
+                  <p style="margin: 5px 0;"><strong>Name:</strong> ${winnerData.name}</p>
+                  <p style="margin: 5px 0;"><strong>Winning Code:</strong> <span style="background-color: #dbeafe; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-weight: bold;">${winnerData.code}</span></p>
+                  <p style="margin: 5px 0;"><strong>Registration City:</strong> ${winnerData.city}</p>
+                </div>
+                
+                <p style="color: #333; line-height: 1.6;">
+                  Please contact us as soon as possible to claim your prize. Make sure to keep your winning code safe as you'll need it for verification.
+                </p>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                  <p style="font-size: 16px; color: #666;">Thank you for participating in Maidan 72 Club!</p>
+                </div>
+                
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+                
+                <div style="text-align: center; color: #666; font-size: 14px;">
+                  <p><strong>Best regards,</strong><br>Maidan 72 Club Team</p>
+                  <p style="margin-top: 20px; font-size: 12px;">This is an automated message. Please do not reply to this email.</p>
+                </div>
+              </div>
+            </div>
+          `
+        };
+
+        try {
+          await transporter.sendMail(mailOptions);
+          results.emailStatus = 'sent';
+          console.log(`📧 Email sent successfully to ${winnerData.name} (${winnerData.email})`);
+        } catch (error) {
+          results.emailStatus = 'failed';
+          results.errors.push(`Email: ${error.message}`);
+          console.error(`❌ Failed to send email to ${winnerData.email}:`, error.message);
+        }
+      }
+
+      return results;
     });
 
-    const emailResults = await Promise.all(emailPromises);
+    const notificationResults = await Promise.all(notificationPromises);
     
-    // Count successful and failed emails
-    const successfulEmails = emailResults.filter(result => result.status === 'sent');
-    const failedEmails = emailResults.filter(result => result.status === 'failed');
+    // Count successful and failed notifications
+    const emailsSent = notificationResults.filter(result => result.emailStatus === 'sent').length;
+    const emailsFailed = notificationResults.filter(result => result.emailStatus === 'failed').length;
+    const whatsappSent = notificationResults.filter(result => result.whatsappStatus === 'sent').length;
+    const whatsappFailed = notificationResults.filter(result => result.whatsappStatus === 'failed').length;
+    
+    // Create summary message
+    const emailMessage = emailsSent > 0 ? `${emailsSent} email(s) sent` : '';
+    const whatsappMessage = whatsappSent > 0 ? `${whatsappSent} WhatsApp message(s) sent` : '';
+    const successMessages = [emailMessage, whatsappMessage].filter(Boolean);
+    
+    const failureMessage = [];
+    if (emailsFailed > 0) failureMessage.push(`${emailsFailed} email(s) failed`);
+    if (whatsappFailed > 0) failureMessage.push(`${whatsappFailed} WhatsApp message(s) failed`);
+    
+    let message = 'Congratulations notifications sent successfully!';
+    if (successMessages.length > 0) {
+      message = `${successMessages.join(' and ')} successfully!`;
+    }
+    if (failureMessage.length > 0) {
+      message += ` ${failureMessage.join(' and ')}.`;
+    }
     
     res.json({
       success: true,
       totalWinners: winners.length,
-      emailsSent: successfulEmails.length,
-      emailsFailed: failedEmails.length,
-      results: emailResults,
-      message: `${successfulEmails.length} congratulations email(s) sent successfully!${failedEmails.length > 0 ? ` ${failedEmails.length} email(s) failed to send.` : ''}`
+      emailsSent,
+      emailsFailed,
+      whatsappSent,
+      whatsappFailed,
+      results: notificationResults,
+      message
     });
 
   } catch (error) {
-    console.error("Error sending winner emails:", error);
-    res.status(500).json({ error: "Failed to send winner emails" });
+    console.error("Error sending winner notifications:", error);
+    res.status(500).json({ error: "Failed to send winner notifications" });
   }
 });
 
 app.get("/webhook", (req, res) => {
-  const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query;
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verified!");
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
+  try {
+    const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query;
+    
+    if (!mode || !token || !challenge) {
+      console.error('Missing webhook verification parameters');
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+    
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      console.log("Webhook verified successfully!");
+      res.status(200).send(challenge);
+    } else {
+      console.error('Webhook verification failed:', { mode, token: token ? '[PRESENT]' : '[MISSING]' });
+      res.status(403).json({ error: 'Webhook verification failed' });
+    }
+  } catch (error) {
+    console.error('Error in webhook verification:', error.message);
+    res.status(500).json({ error: 'Internal server error during webhook verification' });
   }
 });
 
 app.post("/webhook", async (req, res) => {
-  const body = req.body;
-  console.log("Incoming webhook:", JSON.stringify(body, null, 2));
-
-  const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  if (!msg) return res.sendStatus(200);
-
-  const from = msg.from;
-  const text = (msg.text?.body || "").trim();
-  const sessionKey = `session:${from}`;
-
-  let session = await redisClient.hGetAll(sessionKey);
-
-  if (!session.step) {
-    await sendText(from, `  
-      👋 Welcome to Maidan 72! 🏏
-
-        Your chance to win ICC Women's World Cup tickets & unlock once-in-a-lifetime experiences starts now!
-
-        Rules & Terms:
-        * Each entry must be from a valid Rexona purchase.
-        * One entry per unique secret code.
-        * Winners will be selected at random for match tickets, special access, and more.
-        * Only users from India are eligible.
-        * For full details, please see our [official T&Cs here](https://www.unilevernotices.com/privacy-notices/india-english.html).
-
-        🔒 Your privacy matters! We keep your information secure and use it only for contest participation and updates. Read more at the link above.
-      
-        If you agree to the terms and conditions, please enter your full name.
-    `);
-    await redisClient.hSet(sessionKey, { step: "ASK_NAME", phone: from });
-    await redisClient.expire(sessionKey, 30 * 60); // 30 min timeout
-  } else if (session.step === "ASK_NAME") {
-    const validation = await validateWithOpenAI(text, "ASK_NAME", session);
-    await sendText(from, validation.message);
+  try {
+    const body = req.body;
     
-    if (validation.is_valid) {
-      await redisClient.hSet(sessionKey, { step: "ASK_EMAIL", name: validation.value });
+    if (!body) {
+      console.error('Empty webhook body received');
+      return res.status(400).json({ error: 'Empty request body' });
     }
-  } else if (session.step === "ASK_EMAIL") {
-    const validation = await validateWithOpenAI(text, "ASK_EMAIL", session);
     
-    if (!validation.is_valid) {
-      await sendText(from, validation.message);
+    console.log("Incoming webhook:", JSON.stringify(body, null, 2));
+
+    const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!msg) {
+      console.log('No message found in webhook body');
       return res.sendStatus(200);
     }
 
-    try {
-      // Check if email is already registered in the database
-      const emailCheck = await pool.query(
-        "SELECT * FROM codes WHERE email = $1",
-        [validation.value]
-      );
+    const from = msg.from;
+    const text = (msg.text?.body || "").trim();
+    
+    if (!from) {
+      console.error('No sender phone number found in message');
+      return res.sendStatus(200);
+    }
+    
+    const sessionKey = `session:${from}`;
 
-      if (emailCheck.rows.length > 0) {
-        await sendText(from, "❌ This email is already registered with us. Please provide a different email address:");
-      } else {
-        await sendText(from, validation.message);
-        await redisClient.hSet(sessionKey, { step: "ASK_CITY", email: validation.value });
-      }
-    } catch (err) {
-      console.error("Database error during email check:", err.message);
-      await sendText(from, "⚠️ Something went wrong while checking your email. Please try again later.");
-    }
-  } else if (session.step === "ASK_CITY") {
-    const validation = await validateWithOpenAI(text, "ASK_CITY", session);
-    await sendText(from, validation.message);
-    
-    if (validation.is_valid) {
-      await redisClient.hSet(sessionKey, { step: "ASK_CODE", city: validation.value });
-    }
-  } else if (session.step === "ASK_CODE") {
-    // First validate code format with OpenAI
-    const validation = await validateWithOpenAI(text, "ASK_CODE", session);
-    
-    if (!validation.is_valid) {
-      await sendText(from, validation.message);
+    let session;
+    try {
+      session = await redisClient.hGetAll(sessionKey);
+    } catch (redisError) {
+      console.error('Redis error while getting session:', redisError.message);
+      await sendText(from, "⚠️ Technical issue occurred. Please try again later.");
       return res.sendStatus(200);
     }
 
-    try {
-      // Check if the code exists in active codes
-      const result = await pool.query(
-        "SELECT * FROM codes WHERE status = 'active' AND code = $1",
-        [validation.value]
-      );
+    // Handle initial welcome message
+    if (!session.step) {
+      try {
+        await sendText(from, `  
+          👋 Welcome to Maidan 72! 🏏
 
-      if (result.rows.length > 0) {
-        // ✅ Code found in database - proceed with registration
-        // await sendText(from, validation.message);
+            Your chance to win ICC Women's World Cup tickets & unlock once-in-a-lifetime experiences starts now!
+
+            Rules & Terms:
+            * Each entry must be from a valid Rexona purchase.
+            * One entry per unique secret code.
+            * Winners will be selected at random for match tickets, special access, and more.
+            * Only users from India are eligible.
+            * For full details, please see our [official T&Cs here](https://www.unilevernotices.com/privacy-notices/india-english.html).
+
+            🔒 Your privacy matters! We keep your information secure and use it only for contest participation and updates. Read more at the link above.
+          
+            If you agree to the terms and conditions, please enter your full name.
+        `);
         
-        // Store the validated code in session
-        await redisClient.hSet(sessionKey, { code: validation.value });
-        
-        // Update the codes table with user details and mark as inactive
-        const updateSuccess = await updateCodeInDatabase({ 
-          phone: session.phone || from, 
-          name: session.name,
-          email: session.email, 
-          city: session.city, 
-          code: validation.value 
-        });
-        
-        if (updateSuccess) {
-          await redisClient.del(sessionKey);
-          await sendText(from, "🎉 Congratulations! Your registration is complete. Your details have been saved and the scratch code has been marked as used.");
-        } else {
-          await sendText(from, "⚠️ Registration failed. Please try again or contact support.");
+        await redisClient.hSet(sessionKey, { step: "ASK_NAME", phone: from });
+        await redisClient.expire(sessionKey, 30 * 60); // 30 min timeout
+      } catch (error) {
+        console.error('Error in welcome message flow:', error.message);
+        try {
+          await sendText(from, "⚠️ Welcome! There was a technical issue. Please type 'start' to begin registration.");
+        } catch (fallbackError) {
+          console.error('Failed to send fallback message:', fallbackError.message);
         }
-      } else {
-        // ❌ Code not found in database
-        await sendText(from, "❌ Invalid scratch code. This code is not found in our system or has already been used. Please provide a valid scratch code:");
       }
-    } catch (err) {
-      console.error("Database error:", err.message);
-      await sendText(from, "⚠️ Something went wrong while checking your scratch code. Please try again later.");
-    }
-  }
+    } else if (session.step === "ASK_NAME") {
+      try {
+        const validation = await validateWithOpenAI(text, "ASK_NAME", session);
+        await sendText(from, validation.message);
+        
+        if (validation.is_valid) {
+          await redisClient.hSet(sessionKey, { step: "ASK_EMAIL", name: validation.value });
+        }
+      } catch (error) {
+        console.error('Error in ASK_NAME step:', error.message);
+        try {
+          await sendText(from, "⚠️ Sorry, there was an issue processing your name. Please try entering your full name again:");
+        } catch (fallbackError) {
+          console.error('Failed to send name error message:', fallbackError.message);
+        }
+      }
+    } else if (session.step === "ASK_EMAIL") {
+      try {
+        const validation = await validateWithOpenAI(text, "ASK_EMAIL", session);
+        
+        if (!validation.is_valid) {
+          await sendText(from, validation.message);
+          return res.sendStatus(200);
+        }
 
-  res.sendStatus(200);
+        try {
+          // Check if email is already registered in the database
+          const emailCheck = await pool.query(
+            "SELECT * FROM codes WHERE email = $1",
+            [validation.value]
+          );
+
+          if (emailCheck.rows.length > 0) {
+            await sendText(from, "❌ This email is already registered with us. Please provide a different email address:");
+          } else {
+            await sendText(from, validation.message);
+            await redisClient.hSet(sessionKey, { step: "ASK_CITY", email: validation.value });
+          }
+        } catch (dbError) {
+          console.error("Database error during email check:", dbError.message);
+          await sendText(from, "⚠️ Something went wrong while checking your email. Please try again later.");
+        }
+      } catch (error) {
+        console.error('Error in ASK_EMAIL step:', error.message);
+        try {
+          await sendText(from, "⚠️ Sorry, there was an issue processing your email. Please try entering your email address again:");
+        } catch (fallbackError) {
+          console.error('Failed to send email error message:', fallbackError.message);
+        }
+      }
+    } else if (session.step === "ASK_CITY") {
+      try {
+        const validation = await validateWithOpenAI(text, "ASK_CITY", session);
+        await sendText(from, validation.message);
+        
+        if (validation.is_valid) {
+          await redisClient.hSet(sessionKey, { step: "ASK_CODE", city: validation.value });
+        }
+      } catch (error) {
+        console.error('Error in ASK_CITY step:', error.message);
+        try {
+          await sendText(from, "⚠️ Sorry, there was an issue processing your city. Please try entering your city name again:");
+        } catch (fallbackError) {
+          console.error('Failed to send city error message:', fallbackError.message);
+        }
+      }
+    } else if (session.step === "ASK_CODE") {
+      try {
+        // First validate code format with OpenAI
+        const validation = await validateWithOpenAI(text, "ASK_CODE", session);
+        
+        if (!validation.is_valid) {
+          await sendText(from, validation.message);
+          return res.sendStatus(200);
+        }
+
+        try {
+          // Check if the code exists in active codes
+          const result = await pool.query(
+            "SELECT * FROM codes WHERE status = 'active' AND code = $1",
+            [validation.value]
+          );
+
+          if (result.rows.length > 0) {
+            // ✅ Code found in database - proceed with registration
+            try {
+              // Store the validated code in session
+              await redisClient.hSet(sessionKey, { code: validation.value });
+              
+              // Update the codes table with user details and mark as inactive
+              const updateSuccess = await updateCodeInDatabase({ 
+                phone: session.phone || from, 
+                name: session.name,
+                email: session.email, 
+                city: session.city, 
+                code: validation.value 
+              });
+              
+              if (updateSuccess) {
+                await redisClient.del(sessionKey);
+                await sendText(from, "🎉 Congratulations! Your registration is complete. Your details have been saved and the scratch code has been marked as used.");
+              } else {
+                await sendText(from, "⚠️ Registration failed. Please try again or contact support.");
+              }
+            } catch (updateError) {
+              console.error("Error during registration update:", updateError.message);
+              await sendText(from, "⚠️ Registration encountered an issue. Please contact support with your code: " + validation.value);
+            }
+          } else {
+            // ❌ Code not found in database
+            await sendText(from, "❌ Invalid scratch code. This code is not found in our system or has already been used. Please provide a valid scratch code:");
+          }
+        } catch (dbError) {
+          console.error("Database error during code validation:", dbError.message);
+          await sendText(from, "⚠️ Something went wrong while checking your scratch code. Please try again later.");
+        }
+      } catch (error) {
+        console.error('Error in ASK_CODE step:', error.message);
+        try {
+          await sendText(from, "⚠️ Sorry, there was an issue processing your code. Please try entering your scratch code again:");
+        } catch (fallbackError) {
+          console.error('Failed to send code error message:', fallbackError.message);
+        }
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Critical error in webhook POST handler:', error.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Global error handler middleware (must be last)
+app.use((error, req, res, next) => {
+  console.error('Unhandled application error:', {
+    message: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method,
+    body: req.body
+  });
+  
+  if (!res.headersSent) {
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    });
+  }
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Promise Rejection:', reason);
+  // Don't exit the process, just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit the process immediately, give it a chance to clean up
+  setTimeout(() => {
+    console.error('Forcing exit due to uncaught exception');
+    process.exit(1);
+  }, 1000);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received. Shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received. Shutting down gracefully...');
+  process.exit(0);
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-  console.log("- GET /webhook: Webhook verification");
-  console.log("- POST /webhook: Conversation flow handler");
+  console.log(`🚀 Server listening on port ${PORT}`);
+  console.log("📋 Available endpoints:");
+  console.log("  - GET /webhook: Webhook verification");
+  console.log("  - POST /webhook: Conversation flow handler");
+  console.log("  - GET /api/stats: Statistics data");
+  console.log("  - GET /api/charts: Chart data");
+  console.log("  - GET /api/recent-activity: Recent activity data");
+  console.log("  - POST /api/update-winners: Update winners");
+  console.log("  - POST /api/send-winner-emails: Send winner notifications");
+  console.log("✅ Server started successfully with comprehensive error handling");
+}).on('error', (error) => {
+  console.error('❌ Server failed to start:', error.message);
+  process.exit(1);
 });
