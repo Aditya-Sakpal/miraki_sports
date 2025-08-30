@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node webhook.js",
     "upload-key": "node src/uploadPublicKey.js",
     "upload-key-from-file": "node src/uploadPublicKeyFromFile.js"
   },

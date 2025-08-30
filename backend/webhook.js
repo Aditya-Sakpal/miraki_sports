@@ -871,6 +871,10 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+app.get("/",(req,res)=> {
+  res.send("Hello World");
+})
+
 app.listen(PORT, () => {
   console.log(`🚀 Server listening on port ${PORT}`);
   console.log("📋 Available endpoints:");
