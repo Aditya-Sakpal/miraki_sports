@@ -831,6 +831,37 @@ app.post("/webhook", async (req, res) => {
     // Handle initial welcome message
     if (!session.step) {
       try {
+        // Check if user has already registered
+        const existingUserResult = await pool.query(
+          "SELECT * FROM codes WHERE phone_number = $1 AND status = 'inactive'",
+          [from]
+        );
+
+        if (existingUserResult.rows.length > 0) {
+          // User has already registered
+          const userData = existingUserResult.rows[0];
+          const userName = userData["name "] ? userData["name "].trim() : "User";
+          
+          await sendText(from, `👋 Hello ${userName}!
+
+🎉 You have already registered for the Maidan 72 contest with this phone number.
+
+✅ Your registration details:
+👤 Name: ${userName}
+📧 Email: ${userData.email || 'N/A'}
+🏙️ City: ${userData.city || 'N/A'}
+🎫 Code: ${userData.code || 'N/A'}
+
+❌ Multiple registrations from the same phone number are not allowed.
+
+If you want to register with a different account, please use a different phone number.
+
+Thank you for your participation! 🏏`);
+          
+          return res.sendStatus(200);
+        }
+
+        // User hasn't registered, proceed with normal flow
         await sendText(from, `  
           👋 Welcome to Maidan 72! 🏏
 
