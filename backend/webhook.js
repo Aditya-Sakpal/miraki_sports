@@ -169,7 +169,7 @@ function validateCity(input) {
       return false;
     }
     
-    return indianCities.some(c => c.name&& c.name.toLowerCase() === normalized);
+    return indianCities.some(c => c.name && c.name.toLowerCase() === normalized);
   } catch (error) {
     console.error('Error validating city:', error.message);
     return false;
