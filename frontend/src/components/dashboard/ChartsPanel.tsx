@@ -23,7 +23,7 @@ export function ChartsPanel() {
     const fetchChartData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/charts');
+        const response = await fetch('https://api.maidan72club.in/api/charts');
         if (!response.ok) {
           throw new Error('Failed to fetch chart data');
         }

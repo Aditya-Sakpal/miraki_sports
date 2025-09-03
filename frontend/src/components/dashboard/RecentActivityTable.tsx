@@ -36,7 +36,7 @@ export function RecentActivityTable() {
     const fetchRecentActivity = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/recent-activity');
+        const response = await fetch('https://api.maidan72club.in/api/recent-activity');
         if (!response.ok) {
           throw new Error('Failed to fetch recent activity data');
         }

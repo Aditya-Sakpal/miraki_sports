@@ -33,7 +33,7 @@ export function StatsCards({ refreshTrigger }: StatsCardsProps = {}) {
     const fetchStats = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/stats');
+        const response = await fetch('https://api.maidan72club.in/api/stats');
         if (!response.ok) {
           throw new Error('Failed to fetch statistics');
         }

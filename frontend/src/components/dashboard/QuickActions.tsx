@@ -43,7 +43,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated }: QuickAct
   useEffect(() => {
     const fetchEntries = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/recent-activity');
+        const response = await fetch('https://api.maidan72club.in/api/recent-activity');
         if (response.ok) {
           const data = await response.json();
           setEntries(data.entries);
@@ -60,7 +60,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated }: QuickAct
   useEffect(() => {
     const fetchCurrentWinners = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/stats');
+        const response = await fetch('https://api.maidan72club.in/api/stats');
         if (response.ok) {
           const data = await response.json();
           // Update the winners state with current winners from database
@@ -135,7 +135,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated }: QuickAct
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/update-winners', {
+      const response = await fetch('https://api.maidan72club.in/api/update-winners', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -199,7 +199,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated }: QuickAct
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/send-winner-emails', {
+      const response = await fetch('https://api.maidan72club.in/api/send-winner-emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
