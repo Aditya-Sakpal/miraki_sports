@@ -10,7 +10,11 @@ interface ChartData {
   performance: { contest: string; value: number }[];
 }
 
-export function ChartsPanel() {
+interface ChartsPanelProps {
+  isAuthenticated: boolean;
+}
+
+export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
   const [data, setData] = useState<ChartData>({
     daily: [],
     city: [],
@@ -21,9 +25,14 @@ export function ChartsPanel() {
 
   useEffect(() => {
     const fetchChartData = async () => {
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        const response = await fetch('https://api.maidan72club.in/api/charts');
+        const response = await fetch('https://api.maidan72club.in//api/charts');
         if (!response.ok) {
           throw new Error('Failed to fetch chart data');
         }
@@ -40,7 +49,7 @@ export function ChartsPanel() {
     };
 
     fetchChartData();
-  }, []);
+  }, [isAuthenticated]);
   if (loading) {
     return (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">

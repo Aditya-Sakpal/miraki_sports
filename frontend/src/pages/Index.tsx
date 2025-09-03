@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAuthSession, setAuthSession } from "@/utils/auth";
 
 interface Winner {
   id: string;
@@ -76,12 +77,19 @@ const Index = () => {
     e.preventDefault();
     if (password === "pass@123") {
       setIsAuthenticated(true);
+      setAuthSession(); // Store in session storage
       setPasswordError("");
     } else {
       setPasswordError("Invalid password. Please try again.");
       setPassword("");
     }
   };
+
+  // Check authentication status on component mount
+  useEffect(() => {
+    const isAuth = getAuthSession();
+    setIsAuthenticated(isAuth);
+  }, []);
 
   useEffect(() => {
     const id = setTimeout(() => setLoading(false), 700);
@@ -139,10 +147,15 @@ const Index = () => {
         </header>
         
         <main className="container px-6 py-6 space-y-6">
-          <StatsCards refreshTrigger={refreshTrigger} />
-          <QuickActions winners={winners} setWinners={setWinners} onWinnersUpdated={triggerRefresh} />
-          <ChartsPanel />
-          <RecentActivityTable />
+          <StatsCards refreshTrigger={refreshTrigger} isAuthenticated={isAuthenticated} />
+          <QuickActions 
+            winners={winners} 
+            setWinners={setWinners} 
+            onWinnersUpdated={triggerRefresh} 
+            isAuthenticated={isAuthenticated} 
+          />
+          <ChartsPanel isAuthenticated={isAuthenticated} />
+          <RecentActivityTable isAuthenticated={isAuthenticated} />
         </main>
       </div>
     </div>

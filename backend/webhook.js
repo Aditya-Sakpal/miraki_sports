@@ -300,6 +300,67 @@ async function sendVideoMessage(to, videoPath, caption = '') {
   }
 }
 
+async function sendWhatsAppTemplate(to, templateName, languageCode = "en", templateParams = {}) {
+  try {
+    if (!to || !templateName) {
+      throw new Error('Phone number and template name are required');
+    }
+    
+    if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
+      throw new Error('WhatsApp credentials not configured');
+    }
+
+    const payload = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: {
+          code: languageCode
+        }
+      }
+    };
+
+    // Add template parameters if provided
+    if (templateParams && Object.keys(templateParams).length > 0) {
+      payload.template.components = [
+        {
+          type: "body",
+          parameters: Object.values(templateParams).map(value => ({
+            type: "text",
+            text: value
+          }))
+        }
+      ];
+    }
+
+    const response = await axios.post(
+      `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    console.log(`✅ WhatsApp template "${templateName}" sent to ${to}`);
+    return response.data;
+
+  } catch (error) {
+    console.error(`❌ Failed to send WhatsApp template to ${to}:`, {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    throw new Error(`WhatsApp Template Error: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
 async function updateCodeInDatabase({ phone, name, email, city, code }) {
   try {
     console.log("Updating code in DB:", { phone, name, email, city, code });
@@ -527,6 +588,60 @@ app.post("/api/update-winners", async (req, res) => {
   } catch (error) {
     console.error("Error updating winners:", error);
     res.status(500).json({ error: "Failed to update winners" });
+  }
+});
+
+// API endpoint to delete a registration by phone number
+app.delete("/api/registration/:phone", async (req, res) => {
+  try {
+    const { phone } = req.params;
+    
+    if (!phone) {
+      return res.status(400).json({ error: "Phone number is required" });
+    }
+
+    console.log(`Attempting to delete registration for phone: ${phone}`);
+
+    // Delete the record from codes table
+    const result = await pool.query(
+      "DELETE FROM codes WHERE phone_number = $1 RETURNING *",
+      [phone]
+    );
+
+    if (result.rows.length > 0) {
+      const deletedRecord = result.rows[0];
+      console.log("Registration deleted successfully:", {
+        phone: deletedRecord.phone_number,
+        name: deletedRecord.name,
+        email: deletedRecord.email,
+        city: deletedRecord.city,
+        code: deletedRecord.code
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Registration deleted successfully",
+        deletedRecord: {
+          phone: deletedRecord.phone_number,
+          name: deletedRecord.name,
+          email: deletedRecord.email,
+          city: deletedRecord.city,
+          code: deletedRecord.code
+        }
+      });
+    } else {
+      console.log(`No registration found for phone: ${phone}`);
+      res.status(404).json({ 
+        error: "No registration found for this phone number" 
+      });
+    }
+
+  } catch (error) {
+    console.error("Error deleting registration:", error);
+    res.status(500).json({ 
+      error: "Failed to delete registration",
+      details: error.message 
+    });
   }
 });
 
@@ -776,6 +891,19 @@ app.post("/webhook", async (req, res) => {
 
     const from = msg.from;
     const text = (msg.text?.body || "").trim();
+    const buttonReply = msg.interactive?.button_reply?.id;
+    const templateButtonReply = msg.interactive?.button_reply?.title;
+    
+    // Debug: Log the message structure to understand template responses
+    console.log('📩 Message received:', {
+      from,
+      text,
+      buttonReply,
+      templateButtonReply,
+      messageType: msg.type,
+      interactive: msg.interactive,
+      isButtonClick: msg.type === "button"
+    });
     
     if (!from) {
       console.error('No sender phone number found in message');
@@ -793,8 +921,9 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Handle initial welcome message
-    if (!session.step) {
+    // Handle button click from template (messageType: 'button') or text message "Join Contest"
+    if (msg.type === "button" || text.toLowerCase() === "join contest" || text === "Join Contest") {
+      console.log(`🔘 Join Contest button/text detected from ${from}, messageType: ${msg.type}`);
       try {
         // Check if user has already registered
         const existingUserResult = await pool.query(
@@ -810,50 +939,97 @@ app.post("/webhook", async (req, res) => {
           
           await sendText(from, `👋 Hello ${userName}!
 
-            🎉 You have already registered for the Maidan 72 contest with this phone number.
+🎉 You have already registered for the Maidan 72 contest with this phone number.
 
-            ✅ Your registration details:
-            👤 Name: ${userName}
-            📧 Email: ${userData.email || 'N/A'}
-            🏙️ City: ${userData.city || 'N/A'}
-            🎫 Code: ${userData.code || 'N/A'}
+✅ Your registration details:
+👤 Name: ${userName}
+📧 Email: ${userData.email || 'N/A'}
+🏙️ City: ${userData.city || 'N/A'}
+🎫 Code: ${userData.code || 'N/A'}
 
-            ❌ Multiple registrations from the same phone number are not allowed.
+❌ Multiple registrations from the same phone number are not allowed.
 
-            If you want to register with a different account, please use a different phone number.
+If you want to register with a different account, please use a different phone number.
 
-            Thank you for your participation! 🏏`);
+Thank you for your participation! 🏏`);
           
           return res.sendStatus(200);
         }
 
-        // User hasn't registered, proceed with normal flow
-        await sendText(from, `  
-          👋 Welcome to Maidan 72! 🏏
+        // User hasn't registered, start with scratch code verification
+        await sendText(from, `🎯 Great! Let's get you registered for Maidan 72!
 
-            Your chance to win ICC Women's World Cup tickets & unlock once-in-a-lifetime experiences starts now!
-
-            Rules & Terms:
-            * Each entry must be from a valid Rexona purchase.
-            * One entry per unique secret code.
-            * Winners will be selected at random for match tickets, special access, and more.
-            * Only users from India are eligible.
-            * For full details, please see our [official T&Cs here](https://www.unilevernotices.com/privacy-notices/india-english.html).
-
-            🔒 Your privacy matters! We keep your information secure and use it only for contest participation and updates. Read more at the link above.
-          
-            If you agree to the terms and conditions, please enter your full name.
-        `);
+To begin your registration, please enter your 6-character scratch code from your Rexona product:`);
         
-        await redisClient.hSet(sessionKey, { step: "ASK_NAME", phone: from });
+        await redisClient.hSet(sessionKey, { step: "ASK_CODE", phone: from });
+        await redisClient.expire(sessionKey, 30 * 60); // 30 min timeout
+        return res.sendStatus(200);
+      } catch (error) {
+        console.error('Error handling join contest text:', error.message);
+        try {
+          await sendText(from, "⚠️ There was a technical issue. Please try again later.");
+        } catch (fallbackError) {
+          console.error('Failed to send join contest error message:', fallbackError.message);
+        }
+      }
+    }
+
+    // Handle initial welcome message
+    if (!session.step && !session.template_sent) {
+      try {
+        // Check if user has already registered
+        const existingUserResult = await pool.query(
+          "SELECT * FROM codes WHERE phone_number = $1 AND status = 'inactive'",
+          [from]
+        );
+
+        if (existingUserResult.rows.length > 0) {
+          // User has already registered
+          const userData = existingUserResult.rows[0];
+          const userName = userData["name"] ? userData["name"].trim() : "User";
+          console.log("userData",userData);
+          
+          await sendText(from, `👋 Hello ${userName}!
+
+🎉 You have already registered for the Maidan 72 contest with this phone number.
+
+✅ Your registration details:
+👤 Name: ${userName}
+📧 Email: ${userData.email || 'N/A'}
+🏙️ City: ${userData.city || 'N/A'}
+🎫 Code: ${userData.code || 'N/A'}
+
+❌ Multiple registrations from the same phone number are not allowed.
+
+If you want to register with a different account, please use a different phone number.
+
+Thank you for your participation! 🏏`);
+          
+          return res.sendStatus(200);
+        }
+
+        // User hasn't registered, send WhatsApp Business template
+        await sendWhatsAppTemplate(from, "join_contest");
+        
+        // Mark template as sent and wait for button click
+        await redisClient.hSet(sessionKey, { 
+          phone: from, 
+          template_sent: "true" 
+        });
         await redisClient.expire(sessionKey, 30 * 60); // 30 min timeout
       } catch (error) {
         console.error('Error in welcome message flow:', error.message);
         try {
-          await sendText(from, "⚠️ Welcome! There was a technical issue. Please type 'start' to begin registration.");
+          await sendText(from, "⚠️ Welcome! There was a technical issue. Please try again later.");
         } catch (fallbackError) {
           console.error('Failed to send fallback message:', fallbackError.message);
         }
+      }
+    } else if (!session.step && session.template_sent) {
+      // Template already sent, user is sending another message
+      // Check if it's not the "Join Contest" button click or text response
+      if (msg.type !== "button" && text.toLowerCase() !== "join contest" && text !== "Join Contest") {
+        await sendText(from, "👋 Hi! I've already sent you the contest information. Please click the 'Join Contest' button in the message above to proceed with registration.");
       }
     } else if (session.step === "ASK_NAME") {
       try {
@@ -908,15 +1084,107 @@ app.post("/webhook", async (req, res) => {
     } else if (session.step === "ASK_CITY") {
       try {
         const validation = await validateWithOpenAI(text, "ASK_CITY", session);
-        await sendText(from, validation.message);
         
-        if (validation.is_valid) {
-          await redisClient.hSet(sessionKey, { step: "ASK_CODE", city: validation.value });
+        if (!validation.is_valid) {
+          await sendText(from, validation.message);
+          return res.sendStatus(200);
         }
+
+        // Store city and move to final registration
+        await redisClient.hSet(sessionKey, { 
+          step: "FINAL_REGISTRATION", 
+          city: validation.value 
+        });
+
+        // Send confirmation message and complete registration
+//         await sendText(from, `✅ Perfect! Let me complete your registration...
+
+// 📝 *Your Details:*
+// 👤 Name: ${session.name}
+// 📧 Email: ${session.email}
+// 🏙️ City: ${validation.value}
+// 🎫 Code: ${session.code}
+
+// Processing your registration... 🔄`);
+
+        // Trigger the final registration step
+        // We'll simulate receiving another message to trigger FINAL_REGISTRATION
+        setTimeout(async () => {
+          try {
+            const updateSuccess = await updateCodeInDatabase({ 
+              phone: session.phone || from, 
+              name: session.name,
+              email: session.email, 
+              city: validation.value, 
+              code: session.code 
+            });
+            
+            if (updateSuccess) {
+              await redisClient.del(sessionKey);
+              
+              // Send congratulations video after successful registration
+              const videoPath = path.join(__dirname, 'sample.mp4');
+              const videoExists = fs.existsSync(videoPath);
+              
+              if (videoExists) {
+                try {
+                  const videoCaption = `🎉 *CONGRATULATIONS!* 🎉
+
+✅ Your registration for Maidan 72 Club is now complete!
+
+📝 *Your Registration Details:*
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${validation.value}
+🎫 Code: ${session.code}
+
+🏆 You're now part of the contest! Winners will be announced soon.
+
+Thank you for participating in Maidan 72 Club! 🏏
+
+*Best regards,*
+Maidan 72 Club Team`;
+
+                  await sendVideoMessage(from, videoPath, videoCaption);
+                  console.log(`📱🎥 Registration video sent to ${from}`);
+                } catch (videoError) {
+                  console.error(`❌ Failed to send registration video, sending text instead:`, videoError.message);
+                  // Fallback to text message if video fails
+                  await sendText(from, `🎉 Congratulations! Your registration is complete. 
+
+📝 Your Registration Details:
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${validation.value}
+🎫 Code: ${session.code}
+
+Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
+                }
+              } else {
+                // Send text message if video doesn't exist
+                await sendText(from, `🎉 Congratulations! Your registration is complete. 
+
+📝 Your Registration Details:
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${validation.value}
+🎫 Code: ${session.code}
+
+Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
+              }
+            } else {
+              await sendText(from, "⚠️ Registration failed. Please try again or contact support.");
+            }
+          } catch (updateError) {
+            console.error("Error during final registration:", updateError.message);
+            await sendText(from, "⚠️ Registration encountered an issue. Please contact support with your code: " + session.code);
+          }
+        }, 1000); // 1 second delay to show processing message
+        
       } catch (error) {
         console.error('Error in ASK_CITY step:', error.message);
         try {
-          await sendText(from, "⚠️ Sorry, there was an issue processing your city. Please try entering your city nameagain:");
+          await sendText(from, "⚠️ Sorry, there was an issue processing your city. Please try entering your city name again:");
         } catch (fallbackError) {
           console.error('Failed to send city error message:', fallbackError.message);
         }
@@ -939,80 +1207,16 @@ app.post("/webhook", async (req, res) => {
           );
 
           if (result.rows.length > 0) {
-            // ✅ Code found in database - proceed with registration
-            try {
-              // Store the validated code in session
-              await redisClient.hSet(sessionKey, { code: validation.value });
-              
-              // Update the codes table with user details and mark as inactive
-              const updateSuccess = await updateCodeInDatabase({ 
-                phone: session.phone || from, 
-                name: session.name,
-                email: session.email, 
-                city: session.city, 
-                code: validation.value 
-              });
-              
-              if (updateSuccess) {
-                await redisClient.del(sessionKey);
-                
-                // Send congratulations video after successful registration
-                const videoPath = path.join(__dirname, 'sample.mp4');
-                const videoExists = fs.existsSync(videoPath);
-                
-                if (videoExists) {
-                  try {
-                    const videoCaption = `🎉 *CONGRATULATIONS!* 🎉
+            // ✅ Code found in database - proceed to collect user details
+            await sendText(from, `✅ Great! Your scratch code is valid.
 
-✅ Your registration for Maidan 72 Club is now complete!
-
-📝 *Your Registration Details:*
-👤 Name: ${session.name}
-📧 Email: ${session.email}
-🏙️ City: ${session.city}
-🎫 Code: ${validation.value}
-
-🏆 You're now part of the contest! Winners will be announced soon.
-
-Thank you for participating in Maidan 72 Club! 🏏
-
-*Best regards,*
-Maidan 72 Club Team`;
-
-                    await sendVideoMessage(from, videoPath, videoCaption);
-                    console.log(`📱🎥 Registration video sent to ${from}`);
-                  } catch (videoError) {
-                    console.error(`❌ Failed to send registration video, sending text instead:`, videoError.message);
-                    // Fallback to text message if video fails
-                    await sendText(from, `🎉 Congratulations! Your registration is complete. 
-
-📝 Your Registration Details:
-👤 Name: ${session.name}
-📧 Email: ${session.email}
-🏙️ City: ${session.city}
-🎫 Code: ${validation.value}
-
-Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
-                  }
-                } else {
-                  // Send text message if video doesn't exist
-                  await sendText(from, `🎉 Congratulations! Your registration is complete. 
-
-📝 Your Registration Details:
-👤 Name: ${session.name}
-📧 Email: ${session.email}
-🏙️ City: ${session.city}
-🎫 Code: ${validation.value}
-
-Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
-                }
-              } else {
-                await sendText(from, "⚠️ Registration failed. Please try again or contact support.");
-              }
-            } catch (updateError) {
-              console.error("Error during registration update:", updateError.message);
-              await sendText(from, "⚠️ Registration encountered an issue. Please contact support with your code: " + validation.value);
-            }
+Now, please enter your full name:`);
+            
+            // Store the validated code in session and move to next step
+            await redisClient.hSet(sessionKey, { 
+              step: "ASK_NAME", 
+              code: validation.value 
+            });
           } else {
             // ❌ Code not found in database
             await sendText(from, "❌ Invalid scratch code. This code is not found in our system or has already been used. Please provide a valid scratch code:");
@@ -1028,6 +1232,77 @@ Your details have been saved and the scratch code has been marked as used. You'r
         } catch (fallbackError) {
           console.error('Failed to send code error message:', fallbackError.message);
         }
+      }
+    } else if (session.step === "FINAL_REGISTRATION") {
+      try {
+        // This is the final step - complete registration
+        const updateSuccess = await updateCodeInDatabase({ 
+          phone: session.phone || from, 
+          name: session.name,
+          email: session.email, 
+          city: session.city, 
+          code: session.code 
+        });
+        
+        if (updateSuccess) {
+          await redisClient.del(sessionKey);
+          
+          // Send congratulations video after successful registration
+          const videoPath = path.join(__dirname, 'sample.mp4');
+          const videoExists = fs.existsSync(videoPath);
+          
+          if (videoExists) {
+            try {
+              const videoCaption = `🎉 *CONGRATULATIONS!* 🎉
+
+✅ Your registration for Maidan 72 Club is now complete!
+
+📝 *Your Registration Details:*
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${session.city}
+🎫 Code: ${session.code}
+
+🏆 You're now part of the contest! Winners will be announced soon.
+
+Thank you for participating in Maidan 72 Club! 🏏
+
+*Best regards,*
+Maidan 72 Club Team`;
+
+              await sendVideoMessage(from, videoPath, videoCaption);
+              console.log(`📱🎥 Registration video sent to ${from}`);
+            } catch (videoError) {
+              console.error(`❌ Failed to send registration video, sending text instead:`, videoError.message);
+              // Fallback to text message if video fails
+              await sendText(from, `🎉 Congratulations! Your registration is complete. 
+
+📝 Your Registration Details:
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${session.city}
+🎫 Code: ${session.code}
+
+Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
+            }
+          } else {
+            // Send text message if video doesn't exist
+            await sendText(from, `🎉 Congratulations! Your registration is complete. 
+
+📝 Your Registration Details:
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${session.city}
+🎫 Code: ${session.code}
+
+Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
+          }
+        } else {
+          await sendText(from, "⚠️ Registration failed. Please try again or contact support.");
+        }
+      } catch (updateError) {
+        console.error("Error during final registration:", updateError.message);
+        await sendText(from, "⚠️ Registration encountered an issue. Please contact support with your code: " + session.code);
       }
     }
 
@@ -1097,6 +1372,7 @@ app.listen(PORT, () => {
   console.log("  - GET /api/recent-activity: Recent activity data");
   console.log("  - POST /api/update-winners: Update winners");
   console.log("  - POST /api/send-winner-emails: Send winner notifications");
+  console.log("  - DELETE /api/registration/:phone: Delete registration by phone number");
   console.log("✅ Server started successfully with comprehensive error handling");
 }).on('error', (error) => {
   console.error('❌ Server failed to start:', error.message);

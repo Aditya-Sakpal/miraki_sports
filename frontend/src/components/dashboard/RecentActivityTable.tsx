@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Edit, Eye, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export type Entry = {
   id: string;
@@ -22,10 +33,15 @@ export type Entry = {
 
 const statuses = ["All", "Registered", "Verified", "Pending", "Rejected"] as const;
 
-export function RecentActivityTable() {
+interface RecentActivityTableProps {
+  isAuthenticated: boolean;
+}
+
+export function RecentActivityTable({ isAuthenticated }: RecentActivityTableProps) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<typeof statuses[number]>("All");
@@ -34,9 +50,14 @@ export function RecentActivityTable() {
 
   useEffect(() => {
     const fetchRecentActivity = async () => {
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        const response = await fetch('https://api.maidan72club.in/api/recent-activity');
+        const response = await fetch('https://api.maidan72club.in//api/recent-activity');
         if (!response.ok) {
           throw new Error('Failed to fetch recent activity data');
         }
@@ -52,7 +73,7 @@ export function RecentActivityTable() {
     };
 
     fetchRecentActivity();
-  }, []);
+  }, [isAuthenticated]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -64,6 +85,52 @@ export function RecentActivityTable() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const current = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleDelete = async (phone: string, name: string) => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication required",
+        description: "Please authenticate to delete records.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setDeleting(phone);
+    try {
+      const response = await fetch(`https://api.maidan72club.in//api/registration/${encodeURIComponent(phone)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete registration');
+      }
+
+      const result = await response.json();
+      
+      // Remove the deleted entry from the local state
+      setEntries(prevEntries => prevEntries.filter(entry => entry.phone !== phone));
+      
+      toast({
+        title: "Registration deleted",
+        description: `Successfully deleted registration for ${name} (${phone})`,
+      });
+
+    } catch (error) {
+      console.error('Error deleting registration:', error);
+      toast({
+        title: "Error deleting registration",
+        description: error.message || "Failed to delete registration. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   const onAction = (type: "view" | "edit" | "delete", id: string) => {
     toast({ title: `Action: ${type}`, description: `Entry ${id}` });
@@ -145,7 +212,7 @@ export function RecentActivityTable() {
                 <TableHead>City</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Date</TableHead>
-                {/* <TableHead className="text-right">Actions</TableHead> */}
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -170,19 +237,47 @@ export function RecentActivityTable() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">{e.date}</TableCell>
-                    {/* <TableCell className="text-right">
-                      <div className="flex items-center gap-1 justify-end">
-                        <Button variant="ghost" size="icon" aria-label="View" onClick={() => onAction("view", e.id)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => onAction("edit", e.id)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => onAction("delete", e.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell> */}
+                    <TableCell className="text-right">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            aria-label="Delete" 
+                            disabled={deleting === e.phone || !isAuthenticated}
+                            className="hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Registration</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete the registration for <strong>{e.name}</strong> ({e.phone})?
+                              <br /><br />
+                              This action cannot be undone and will permanently remove all registration data including:
+                              <ul className="list-disc list-inside mt-2 space-y-1">
+                                <li>Personal information (name, email, city)</li>
+                                <li>Scratch code usage</li>
+                                <li>Registration timestamp</li>
+                                <li>Winner status (if applicable)</li>
+                              </ul>
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(e.phone, e.name)}
+                              className="bg-red-600 hover:bg-red-700"
+                              disabled={deleting === e.phone}
+                            >
+                              {deleting === e.phone ? "Deleting..." : "Delete Registration"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
                   </TableRow>
                 ))
               )}

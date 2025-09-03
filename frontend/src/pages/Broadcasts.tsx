@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Send, Users, Mail, Trophy, MessageCircle } from "lucide-react";
+import { getAuthSession } from "@/utils/auth";
 
 interface Winner {
   name: string;
@@ -23,14 +24,32 @@ export default function Broadcasts() {
   const [winners, setWinners] = useState<Winner[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchingWinners, setFetchingWinners] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { toast } = useToast();
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = () => {
+      const authStatus = getAuthSession();
+      setIsAuthenticated(authStatus);
+      if (!authStatus) {
+        setFetchingWinners(false);
+      }
+    };
+    checkAuth();
+  }, []);
 
   // Fetch current winners from database
   useEffect(() => {
     const fetchWinners = async () => {
+      if (!isAuthenticated) {
+        setFetchingWinners(false);
+        return;
+      }
+
       try {
         setFetchingWinners(true);
-        const response = await fetch('https://api.maidan72club.in/api/stats');
+        const response = await fetch('https://api.maidan72club.in//api/stats');
         if (response.ok) {
           const data = await response.json();
           setWinners(data.winnersSelected || []);
@@ -48,9 +67,18 @@ export default function Broadcasts() {
     };
 
     fetchWinners();
-  }, [toast]);
+  }, [toast, isAuthenticated]);
 
   const sendWinnerEmails = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication required",
+        description: "Please authenticate to send notifications.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (winners.length === 0) {
       toast({
         title: "No winners available",
@@ -62,7 +90,7 @@ export default function Broadcasts() {
 
     setLoading(true);
     try {
-      const response = await fetch('https://api.maidan72club.in/api/send-winner-emails', {
+      const response = await fetch('https://api.maidan72club.in//api/send-winner-emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

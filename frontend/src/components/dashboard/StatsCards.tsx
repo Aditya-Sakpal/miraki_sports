@@ -18,9 +18,10 @@ interface StatsData {
 
 interface StatsCardsProps {
   refreshTrigger?: number;
+  isAuthenticated: boolean;
 }
 
-export function StatsCards({ refreshTrigger }: StatsCardsProps = {}) {
+export function StatsCards({ refreshTrigger, isAuthenticated }: StatsCardsProps) {
   const [data, setData] = useState<StatsData>({
     registrations: 0,
     codeScansPerDay: 0,
@@ -31,9 +32,14 @@ export function StatsCards({ refreshTrigger }: StatsCardsProps = {}) {
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        const response = await fetch('https://api.maidan72club.in/api/stats');
+        const response = await fetch('https://api.maidan72club.in//api/stats');
         if (!response.ok) {
           throw new Error('Failed to fetch statistics');
         }
@@ -50,7 +56,7 @@ export function StatsCards({ refreshTrigger }: StatsCardsProps = {}) {
     };
 
     fetchStats();
-  }, [refreshTrigger]); // Add refreshTrigger as dependency
+  }, [refreshTrigger, isAuthenticated]); // Add isAuthenticated as dependency
   const items = [
     { title: "Total Registrations", value: data.registrations.toLocaleString(), icon: Users },
     { title: "Code Scans Per Day", value: data.codeScansPerDay.toLocaleString(), icon: Scan },
