@@ -39,7 +39,7 @@ export function StatsCards({ refreshTrigger, isAuthenticated }: StatsCardsProps)
 
       try {
         setLoading(true);
-        const response = await fetch('https://api.maidan72club.in//api/stats');
+        const response = await fetch('https://api.maidan72club.in/api/stats');
         if (!response.ok) {
           throw new Error('Failed to fetch statistics');
         }

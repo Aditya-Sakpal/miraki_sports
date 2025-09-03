@@ -32,7 +32,7 @@ export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
 
       try {
         setLoading(true);
-        const response = await fetch('https://api.maidan72club.in//api/charts');
+        const response = await fetch('https://api.maidan72club.in/api/charts');
         if (!response.ok) {
           throw new Error('Failed to fetch chart data');
         }

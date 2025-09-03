@@ -57,7 +57,7 @@ export function RecentActivityTable({ isAuthenticated }: RecentActivityTableProp
 
       try {
         setLoading(true);
-        const response = await fetch('https://api.maidan72club.in//api/recent-activity');
+        const response = await fetch('https://api.maidan72club.in/api/recent-activity');
         if (!response.ok) {
           throw new Error('Failed to fetch recent activity data');
         }
@@ -98,7 +98,7 @@ export function RecentActivityTable({ isAuthenticated }: RecentActivityTableProp
 
     setDeleting(phone);
     try {
-      const response = await fetch(`https://api.maidan72club.in//api/registration/${encodeURIComponent(phone)}`, {
+      const response = await fetch(`https://api.maidan72club.in/api/registration/${encodeURIComponent(phone)}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

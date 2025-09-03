@@ -49,7 +49,7 @@ export default function Broadcasts() {
 
       try {
         setFetchingWinners(true);
-        const response = await fetch('https://api.maidan72club.in//api/stats');
+        const response = await fetch('https://api.maidan72club.in/api/stats');
         if (response.ok) {
           const data = await response.json();
           setWinners(data.winnersSelected || []);
@@ -90,7 +90,7 @@ export default function Broadcasts() {
 
     setLoading(true);
     try {
-      const response = await fetch('https://api.maidan72club.in//api/send-winner-emails', {
+      const response = await fetch('https://api.maidan72club.in/api/send-winner-emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
