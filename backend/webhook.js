@@ -581,65 +581,30 @@ app.post("/api/send-winner-emails", async (req, res) => {
         errors: []
       };
 
-      // Send WhatsApp message if phone number exists
+      // Send WhatsApp message if phone number exists (text only for winners)
       if (winnerData.phone) {
         try {
-          // If video exists, send video with congratulations as caption
-          if (videoExists) {
-            const videoCaption = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
+          const whatsappMessage = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
 
-🏆 You're a WINNER in the Maidan 72 Club contest!
+            🏆 You're a WINNER in the Maidan 72 Club contest!
 
-✅ *Your Winner Details:*
-👤 Name: ${winnerData.name}
-🎫 Winning Code: *${winnerData.code}*
-🏙️ City: ${winnerData.city}
+            ✅ *Your Winner Details:*
+            👤 Name: ${winnerData.name}
+            🎫 Winning Code: *${winnerData.code}*
+            🏙️ City: ${winnerData.city}
 
-🎯 *What's Next?*
-Please contact us as soon as possible to claim your prize. Keep your winning code safe as you'll need it for verification.
+            🎯 *What's Next?*
+            Please contact us as soon as possible to claim your prize. Keep your winning code safe as you'll need it for verification.
 
-Thank you for participating in Maidan 72 Club! 🏏
+            Thank you for participating in Maidan 72 Club! 🏏
 
-*Best regards,*
-Maidan 72 Club Team`;
+            *Best regards,*
+            Maidan 72 Club Team`;
 
-            try {
-              await sendVideoMessage(winnerData.phone, videoPath, videoCaption);
-              results.whatsappStatus = 'sent';
-              results.videoSent = true;
-              console.log(`📱🎥 WhatsApp video with congratulations sent to ${winnerData.name} (${winnerData.phone})`);
-            } catch (videoError) {
-              console.error(`❌ Failed to send video, falling back to text message:`, videoError.message);
-              // Fallback to text message if video fails
-              await sendText(winnerData.phone, videoCaption);
-              results.whatsappStatus = 'sent';
-              results.videoSent = false;
-              results.errors.push(`Video failed, sent text instead: ${videoError.message}`);
-              console.log(`📱 WhatsApp text sent as fallback to ${winnerData.name}`);
-            }
-          } else {
-            // Send regular text message if no video
-            const whatsappMessage = `🎉 *CONGRATULATIONS ${winnerData.name}!* 🎉
-
-🏆 You're a WINNER in the Maidan 72 Club contest!
-
-✅ *Your Winner Details:*
-👤 Name: ${winnerData.name}
-🎫 Winning Code: *${winnerData.code}*
-🏙️ City: ${winnerData.city}
-
-🎯 *What's Next?*
-Please contact us as soon as possible to claim your prize. Keep your winning code safe as you'll need it for verification.
-
-Thank you for participating in Maidan 72 Club! 🏏
-
-*Best regards,*
-Maidan 72 Club Team`;
-
-            await sendText(winnerData.phone, whatsappMessage);
-            results.whatsappStatus = 'sent';
-            console.log(`📱 WhatsApp sent successfully to ${winnerData.name} (${winnerData.phone})`);
-          }
+          await sendText(winnerData.phone, whatsappMessage);
+          results.whatsappStatus = 'sent';
+          results.videoSent = false; // No video sent for winners
+          console.log(`📱 WhatsApp winner notification sent to ${winnerData.name} (${winnerData.phone})`);
         } catch (error) {
           results.whatsappStatus = 'failed';
           results.errors.push(`WhatsApp: ${error.message}`);
@@ -801,7 +766,7 @@ app.post("/webhook", async (req, res) => {
       return res.status(400).json({ error: 'Empty request body' });
     }
     
-    console.log("Incoming webhook:", JSON.stringify(body, null, 2));
+    // console.log("Incoming webhook:", JSON.stringify(body, null, 2));
 
     const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     if (!msg) {
@@ -840,23 +805,24 @@ app.post("/webhook", async (req, res) => {
         if (existingUserResult.rows.length > 0) {
           // User has already registered
           const userData = existingUserResult.rows[0];
-          const userName = userData["name "] ? userData["name "].trim() : "User";
+          const userName = userData["name"] ? userData["name"].trim() : "User";
+          console.log("userData",userData);
           
           await sendText(from, `👋 Hello ${userName}!
 
-🎉 You have already registered for the Maidan 72 contest with this phone number.
+            🎉 You have already registered for the Maidan 72 contest with this phone number.
 
-✅ Your registration details:
-👤 Name: ${userName}
-📧 Email: ${userData.email || 'N/A'}
-🏙️ City: ${userData.city || 'N/A'}
-🎫 Code: ${userData.code || 'N/A'}
+            ✅ Your registration details:
+            👤 Name: ${userName}
+            📧 Email: ${userData.email || 'N/A'}
+            🏙️ City: ${userData.city || 'N/A'}
+            🎫 Code: ${userData.code || 'N/A'}
 
-❌ Multiple registrations from the same phone number are not allowed.
+            ❌ Multiple registrations from the same phone number are not allowed.
 
-If you want to register with a different account, please use a different phone number.
+            If you want to register with a different account, please use a different phone number.
 
-Thank you for your participation! 🏏`);
+            Thank you for your participation! 🏏`);
           
           return res.sendStatus(200);
         }
@@ -989,7 +955,57 @@ Thank you for your participation! 🏏`);
               
               if (updateSuccess) {
                 await redisClient.del(sessionKey);
-                await sendText(from, "🎉 Congratulations! Your registration is complete. Your details have been saved and the scratch code has been marked as used.");
+                
+                // Send congratulations video after successful registration
+                const videoPath = path.join(__dirname, 'sample.mp4');
+                const videoExists = fs.existsSync(videoPath);
+                
+                if (videoExists) {
+                  try {
+                    const videoCaption = `🎉 *CONGRATULATIONS!* 🎉
+
+✅ Your registration for Maidan 72 Club is now complete!
+
+📝 *Your Registration Details:*
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${session.city}
+🎫 Code: ${validation.value}
+
+🏆 You're now part of the contest! Winners will be announced soon.
+
+Thank you for participating in Maidan 72 Club! 🏏
+
+*Best regards,*
+Maidan 72 Club Team`;
+
+                    await sendVideoMessage(from, videoPath, videoCaption);
+                    console.log(`📱🎥 Registration video sent to ${from}`);
+                  } catch (videoError) {
+                    console.error(`❌ Failed to send registration video, sending text instead:`, videoError.message);
+                    // Fallback to text message if video fails
+                    await sendText(from, `🎉 Congratulations! Your registration is complete. 
+
+📝 Your Registration Details:
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${session.city}
+🎫 Code: ${validation.value}
+
+Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
+                  }
+                } else {
+                  // Send text message if video doesn't exist
+                  await sendText(from, `🎉 Congratulations! Your registration is complete. 
+
+📝 Your Registration Details:
+👤 Name: ${session.name}
+📧 Email: ${session.email}
+🏙️ City: ${session.city}
+🎫 Code: ${validation.value}
+
+Your details have been saved and the scratch code has been marked as used. You're now part of the contest! 🏏`);
+                }
               } else {
                 await sendText(from, "⚠️ Registration failed. Please try again or contact support.");
               }
