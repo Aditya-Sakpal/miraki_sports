@@ -131,7 +131,7 @@ export default function Broadcasts() {
                           <Mail className="h-4 w-4 text-blue-500" />
                           <p className="font-medium">Email Template</p>
                         </div>
-                        <p className="text-xs text-muted-foreground">Subject: 🎉 Congratulations! You're a Winner - Club Rexsona</p>
+                        <p className="text-xs text-muted-foreground">Subject: 🎉 Congratulations! You're a Winner - Club Rexona</p>
                         <Separator />
                         <div className="text-muted-foreground text-xs">
                           <p>• Professional HTML email with winner details</p>

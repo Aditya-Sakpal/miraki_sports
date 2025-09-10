@@ -274,7 +274,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
                     readOnly 
                     value={`🎉 Congratulations {name}!
 
-                        You've been selected as a winner in the Club Rexsona contest! 
+                        You've been selected as a winner in the Club Rexona contest! 
 
                         Your winning code: {code}
                         Registration City: {city}
@@ -282,7 +282,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
                         Please contact us to claim your prize. Thank you for participating!
 
                         Best regards,
-                        Club Rexsona Team`}
+                        Club Rexona Team`}
                     className="mt-2"
                     rows={8}
                   />
