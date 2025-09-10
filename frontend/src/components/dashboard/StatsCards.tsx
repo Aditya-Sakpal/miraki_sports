@@ -2,19 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ArrowUpRight, CheckCircle2, Users, Trophy, TrendingUp, ShoppingBag, Scan, Award } from "lucide-react";
-import { useEffect, useState } from "react";
-
-interface Winner {
-  name: string;
-  phone: string;
-  city: string;
-}
-
-interface StatsData {
-  registrations: number;
-  codeScansPerDay: number;
-  winnersSelected: Winner[];
-}
+import { useData } from "@/contexts/DataContext";
 
 interface StatsCardsProps {
   refreshTrigger?: number;
@@ -22,50 +10,16 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ refreshTrigger, isAuthenticated }: StatsCardsProps) {
-  const [data, setData] = useState<StatsData>({
-    registrations: 0,
-    codeScansPerDay: 0,
-    winnersSelected: []
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      if (!isAuthenticated) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const response = await fetch('https://api.maidan72club.in/api/stats');
-        if (!response.ok) {
-          throw new Error('Failed to fetch statistics');
-        }
-        const statsData = await response.json();
-        console.log("statsData",statsData);
-        setData(statsData);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching stats:', err);
-        setError('Failed to load statistics');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, [refreshTrigger, isAuthenticated]); // Add isAuthenticated as dependency
+  const { statsData, loading, error } = useData();
   const items = [
-    { title: "Total Registrations", value: data.registrations.toLocaleString(), icon: Users },
-    { title: "Code Scans Per Day", value: data.codeScansPerDay.toLocaleString(), icon: Scan },
+    { title: "Total Registrations", value: statsData.registrations.toLocaleString(), icon: Users },
+    { title: "Code Scans Per Day", value: statsData.codeScansPerDay.toLocaleString(), icon: Scan },
     { 
       title: "Winners Selected", 
-      value: data.winnersSelected.length.toString(), 
+      value: statsData.winnersSelected.length.toString(), 
       icon: Award,
       isWinners: true,
-      winners: data.winnersSelected
+      winners: statsData.winnersSelected
     },
   ];
 

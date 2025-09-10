@@ -1,55 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, BarChart, Bar } from "recharts";
-import { useEffect, useState } from "react";
+import { useData } from "@/contexts/DataContext";
 
 const COLORS = ["#3b82f6", "#60a5fa", "#93c5fd", "#1d4ed8", "#2563eb"]; // Using blue shades only for visual, tokens used elsewhere
-
-interface ChartData {
-  daily: { date: string; count: number }[];
-  city: { name: string; value: number }[];
-  performance: { contest: string; value: number }[];
-}
 
 interface ChartsPanelProps {
   isAuthenticated: boolean;
 }
 
 export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
-  const [data, setData] = useState<ChartData>({
-    daily: [],
-    city: [],
-    performance: []
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchChartData = async () => {
-      if (!isAuthenticated) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const response = await fetch('https://api.maidan72club.in/api/charts');
-        if (!response.ok) {
-          throw new Error('Failed to fetch chart data');
-        }
-        const chartData = await response.json();
-        console.log("chartData",chartData);
-        setData(chartData);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching chart data:', err);
-        setError('Failed to load chart data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchChartData();
-  }, [isAuthenticated]);
+  const { chartData, loading, error } = useData();
   if (loading) {
     return (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -95,7 +55,7 @@ export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
         </CardHeader>
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data.daily} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <LineChart data={chartData.daily} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
@@ -113,8 +73,8 @@ export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={data.city} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
-                {data.city.map((_, idx) => (
+              <Pie data={chartData.city} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                {chartData.city.map((_, idx) => (
                   <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
                 ))}
               </Pie>
@@ -130,7 +90,7 @@ export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
         </CardHeader>
         <CardContent className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.performance}>
+            <BarChart data={chartData.performance}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis dataKey="contest" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />

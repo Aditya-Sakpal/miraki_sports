@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Edit, Eye, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useData } from "@/contexts/DataContext";
+import { Entry } from "@/utils/dataTransforms";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,18 +21,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-export type Entry = {
-  id: string;
-  name: string;
-  phone: string;
-  city: string;
-  status: "Registered" | "Verified" | "Pending" | "Rejected";
-  date: string;
-  email?: string;
-  code?: string;
-  isWinner?: boolean;
-};
-
 const statuses = ["All", "Registered", "Verified", "Pending", "Rejected"] as const;
 
 interface RecentActivityTableProps {
@@ -38,42 +28,13 @@ interface RecentActivityTableProps {
 }
 
 export function RecentActivityTable({ isAuthenticated }: RecentActivityTableProps) {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { entries, loading, error, deleteEntry } = useData();
   const [deleting, setDeleting] = useState<string | null>(null);
   const { toast } = useToast();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<typeof statuses[number]>("All");
   const [page, setPage] = useState(1);
   const pageSize = 10;
-
-  useEffect(() => {
-    const fetchRecentActivity = async () => {
-      if (!isAuthenticated) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const response = await fetch('https://api.maidan72club.in/api/recent-activity');
-        if (!response.ok) {
-          throw new Error('Failed to fetch recent activity data');
-        }
-        const data = await response.json();
-        setEntries(data.entries);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching recent activity:', err);
-        setError('Failed to load recent activity data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchRecentActivity();
-  }, [isAuthenticated]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -98,22 +59,14 @@ export function RecentActivityTable({ isAuthenticated }: RecentActivityTableProp
 
     setDeleting(phone);
     try {
-      const response = await fetch(`https://api.maidan72club.in/api/registration/${encodeURIComponent(phone)}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete registration');
+      // Find the entry by phone to get the ID
+      const entryToDelete = entries.find(entry => entry.phone === phone);
+      if (!entryToDelete) {
+        throw new Error('Entry not found');
       }
 
-      const result = await response.json();
-      
-      // Remove the deleted entry from the local state
-      setEntries(prevEntries => prevEntries.filter(entry => entry.phone !== phone));
+      // Use the context's delete function
+      deleteEntry(entryToDelete.id);
       
       toast({
         title: "Registration deleted",
