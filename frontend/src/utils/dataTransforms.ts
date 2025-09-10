@@ -30,7 +30,7 @@ export interface ChartData {
 
 export interface StatsData {
   registrations: number;
-  codeScansPerDay: number;
+  codeScansToday: number;
   winnersSelected: Winner[];
 }
 
@@ -100,13 +100,18 @@ export const transformToStatsData = (apiData: ApiDataItem[], winners: Winner[] =
   
   const registrations = apiData.filter(item => item.user_registered === "yes").length;
   
-  // Calculate code scans per day (assuming each registration is a scan)
-  const uniqueDates = new Set(apiData.map(item => new Date(item.sysLocDate).toDateString()));
-  const codeScansPerDay = Math.round(apiData.length / Math.max(uniqueDates.size, 1));
+  // Calculate code scans today (registrations that happened today)
+  const today = new Date();
+  const todayDateString = today.toDateString(); // Gets "Wed Sep 10 2025" format
+  
+  const codeScansToday = apiData.filter(item => {
+    const itemDate = new Date(item.sysLocDate);
+    return itemDate.toDateString() === todayDateString;
+  }).length;
 
   const result = {
     registrations,
-    codeScansPerDay,
+    codeScansToday,
     winnersSelected: winners,
   };
   

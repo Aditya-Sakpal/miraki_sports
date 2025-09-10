@@ -31,6 +31,7 @@ const AUTH_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaGF0Ym90Ijp7ImlkIjo
 
 export const fetchAllData = async (): Promise<ApiResponse> => {
   try {
+    console.log('Starting API call to:', API_ENDPOINT);
     const response = await fetch(API_ENDPOINT, {
       method: 'GET',
       headers: {
@@ -38,17 +39,20 @@ export const fetchAllData = async (): Promise<ApiResponse> => {
         'Content-Type': 'application/json',
       },
     });
-
+    console.log("API Response status:", response.status, response.statusText);
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const data: ApiResponse = await response.json();
+    console.log("API Response data:", data);
     
     if (!data.success) {
       throw new Error('API returned success: false');
     }
 
+    console.log("API call successful, returning data with", data.data.length, "items");
     return data;
   } catch (error) {
     console.error('Error fetching data from API:', error);

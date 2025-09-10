@@ -30,7 +30,7 @@ interface DataContextType {
   isAuthenticated: boolean;
   
   // Actions
-  refreshData: () => Promise<void>;
+  refreshData: (forceAuth?: boolean) => Promise<void>;
   setWinners: (winners: Winner[]) => void;
   updateEntry: (entryId: string, updates: Partial<Entry>) => void;
   deleteEntry: (entryId: string) => void;
@@ -53,7 +53,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   });
   const [statsData, setStatsData] = useState<StatsData>({
     registrations: 0,
-    codeScansPerDay: 0,
+    codeScansToday: 0,
     winnersSelected: []
   });
   const [winners, setWinnersState] = useState<Winner[]>([]);
@@ -71,8 +71,8 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     setStatsData(transformedStatsData);
   };
 
-  const refreshData = async () => {
-    if (!isAuthenticated) {
+  const refreshData = async (forceAuth: boolean = false) => {
+    if (!forceAuth && !isAuthenticated) {
       setLoading(false);
       return;
     }
@@ -100,14 +100,14 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const setAuthenticated = (authenticated: boolean) => {
     setIsAuthenticated(authenticated);
     if (authenticated) {
-      // Fetch data immediately when authenticated
-      refreshData();
+      // Fetch data immediately when authenticated, force auth bypass since state might not be updated yet
+      refreshData(true);
     } else {
       // Clear data when not authenticated
       setRawData([]);
       setEntries([]);
       setChartData({ daily: [], city: [], performance: [] });
-      setStatsData({ registrations: 0, codeScansPerDay: 0, winnersSelected: [] });
+      setStatsData({ registrations: 0, codeScansToday: 0, winnersSelected: [] });
       setWinnersState([]);
     }
   };

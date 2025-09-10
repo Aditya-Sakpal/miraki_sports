@@ -84,7 +84,7 @@ export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
         </CardContent>
       </Card>
 
-      <Card className="xl:col-span-3">
+      {/* <Card className="xl:col-span-3">
         <CardHeader>
           <CardTitle>Contest Performance</CardTitle>
         </CardHeader>
@@ -99,7 +99,7 @@ export function ChartsPanel({ isAuthenticated }: ChartsPanelProps) {
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 }

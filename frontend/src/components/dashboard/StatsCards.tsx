@@ -13,7 +13,7 @@ export function StatsCards({ refreshTrigger, isAuthenticated }: StatsCardsProps)
   const { statsData, loading, error } = useData();
   const items = [
     { title: "Total Registrations", value: statsData.registrations.toLocaleString(), icon: Users },
-    { title: "Code Scans Per Day", value: statsData.codeScansPerDay.toLocaleString(), icon: Scan },
+    { title: "Code Scans Today", value: statsData.codeScansToday.toLocaleString(), icon: Scan },
     { 
       title: "Winners Selected", 
       value: statsData.winnersSelected.length.toString(), 

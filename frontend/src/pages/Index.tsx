@@ -87,7 +87,7 @@ const Index = () => {
           <div className="container flex h-16 items-center justify-between px-6">
             <div className="space-y-1">
               <h1 className="text-2xl font-heading font-semibold text-foreground">Admin Dashboard</h1>
-              <p className="text-base text-muted-foreground">Maidan 72 Club</p>
+              <p className="text-base text-muted-foreground">Club Rexsona</p>
             </div>
             <ModeToggle />
           </div>

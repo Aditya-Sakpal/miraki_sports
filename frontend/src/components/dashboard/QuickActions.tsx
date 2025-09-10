@@ -274,15 +274,15 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
                     readOnly 
                     value={`🎉 Congratulations {name}!
 
-You've been selected as a winner in the Maidan 72 Club contest! 
+                        You've been selected as a winner in the Club Rexsona contest! 
 
-Your winning code: {code}
-Registration City: {city}
+                        Your winning code: {code}
+                        Registration City: {city}
 
-Please contact us to claim your prize. Thank you for participating!
+                        Please contact us to claim your prize. Thank you for participating!
 
-Best regards,
-Maidan 72 Club Team`}
+                        Best regards,
+                        Club Rexsona Team`}
                     className="mt-2"
                     rows={8}
                   />
