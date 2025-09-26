@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowUpRight, CheckCircle2, Users, Trophy, TrendingUp, ShoppingBag, Scan, Award } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Users, Trophy, TrendingUp, ShoppingBag, Scan, Award, Download } from "lucide-react";
 import { useData } from "@/contexts/DataContext";
 
 interface StatsCardsProps {
@@ -11,6 +11,27 @@ interface StatsCardsProps {
 
 export function StatsCards({ refreshTrigger, isAuthenticated }: StatsCardsProps) {
   const { statsData, loading, error } = useData();
+  const handleDownloadWinners = (winners: { name: string; phone: string; city: string; email?: string }[]) => {
+    try {
+      const rows = [
+        ["Name", "Phone", "Email", "City"],
+        ...winners.map(w => [w.name || "", w.phone || "", w.email || "", w.city || ""]) ,
+      ];
+      const csv = rows.map(r => r.map(field => `"${String(field).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      link.download = `club_rexona_winners_${date}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Failed to export winners CSV", e);
+    }
+  };
   const items = [
     { title: "Total Registrations", value: statsData.registrations.toLocaleString(), icon: Users },
     { title: "Code Scans Today", value: statsData.codeScansToday.toLocaleString(), icon: Scan },
@@ -69,7 +90,20 @@ export function StatsCards({ refreshTrigger, isAuthenticated }: StatsCardsProps)
         <Card key={i.title} className="hover:shadow-md" style={{ boxShadow: "var(--shadow-elevated)" }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">{i.title}</CardTitle>
-            <i.icon className="h-4 w-4 text-primary" />
+            <div className="flex items-center gap-2">
+              {i.isWinners && i.winners && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => handleDownloadWinners(i.winners)}
+                  title="Download winners CSV"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <i.icon className="h-4 w-4 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
