@@ -59,3 +59,39 @@ export const fetchAllData = async (): Promise<ApiResponse> => {
     throw error;
   }
 };
+
+// ---------------------- Winners via Mini Express Server ----------------------
+// This frontend will call a tiny Express server (to be hosted separately)
+
+export interface WinnerDoc {
+  id: string;
+  name: string;
+  phone: string;
+  city: string;
+  email?: string;
+}
+
+const WINNERS_API_BASE = (import.meta as any).env?.VITE_WINNERS_API_BASE || 'http://localhost:5055';
+
+export async function saveWinners(winners: WinnerDoc[]): Promise<void> {
+  const res = await fetch(`${WINNERS_API_BASE}/winners`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ winners }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to save winners: ${res.status} ${text}`);
+  }
+}
+
+export async function fetchWinnersFromDb(): Promise<WinnerDoc[]> {
+  const res = await fetch(`${WINNERS_API_BASE}/winners`, { method: 'GET' });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch winners: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  const winners = (data?.winners || []) as WinnerDoc[];
+  return winners;
+}

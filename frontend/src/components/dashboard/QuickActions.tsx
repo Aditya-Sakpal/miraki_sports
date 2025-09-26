@@ -5,6 +5,7 @@ import { Sparkles, Send, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/DataContext";
 import { Winner } from "@/utils/dataTransforms";
+import { saveWinners } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface QuickActionsProps {
   winners: Winner[];
@@ -34,26 +36,40 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [count, setCount] = useState(3);
   const [selectedWinners, setSelectedWinners] = useState<Winner[]>([]);
+  const CITY_OPTIONS = ["Mumbai", "Indore", "Guwahati", "Visakhapatnam"];
+  const [selectedCities, setSelectedCities] = useState<string[]>(CITY_OPTIONS);
+
+  const selectedCitySet = new Set(selectedCities.map((c) => c.toLowerCase()));
+  const filteredEntries = entries.filter((e) => selectedCitySet.has((e.city || "").toLowerCase()));
 
   const pickWinners = () => {
-    if (entries.length === 0) {
+    if (selectedCities.length === 0) {
+      toast({
+        title: "No cities selected",
+        description: "Please select at least one city to pick winners from.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (filteredEntries.length === 0) {
       toast({ 
         title: "No users available", 
-        description: "No registered users found to select winners from.",
+        description: "No registered users found in the selected cities.",
         variant: "destructive"
       });
       return;
     }
 
     const chosen: Winner[] = [];
-    const availableEntries = [...entries]; // Create a copy to avoid modifying original
+    const availableEntries = [...filteredEntries]; // Create a copy to avoid modifying original
     const n = Math.max(1, count);
     
     // If more winners requested than available users, show warning but proceed
     if (n > availableEntries.length) {
       toast({ 
         title: "Limited users available", 
-        description: `Only ${availableEntries.length} users available. Selecting all of them.`,
+        description: `Only ${availableEntries.length} users available in the selected cities. Selecting all of them.`,
         variant: "default"
       });
     }
@@ -89,18 +105,19 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
 
     setLoading(true);
     try {
+      await saveWinners(selectedWinners);
+
       // Update winners in both local state and context
       setWinners(selectedWinners);
       setContextWinners(selectedWinners);
       
-      // Trigger refresh of StatsCards to update winner count immediately
       if (onWinnersUpdated) {
         onWinnersUpdated();
       }
       
       toast({ 
         title: "Winners confirmed!", 
-        description: `${selectedWinners.length} winner(s) have been selected.` 
+        description: `${selectedWinners.length} winner(s) saved to database.` 
       });
       
       setWinnersOpen(false);
@@ -108,7 +125,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
       console.error('Error updating winners:', error);
       toast({ 
         title: "Error", 
-        description: "Failed to update winners.",
+        description: "Failed to save winners to database.",
         variant: "destructive"
       });
     } finally {
@@ -201,19 +218,41 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
               <DialogDescription>Pick a random set of winners from recent participants.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
+              <div>
+                <Label>Filter by cities</Label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {CITY_OPTIONS.map((city) => {
+                    const id = `city-${city.toLowerCase()}`;
+                    return (
+                      <div key={city} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={id}
+                          checked={selectedCities.includes(city)}
+                          onCheckedChange={(checked) =>
+                            setSelectedCities((prev) =>
+                              checked ? [...prev, city] : prev.filter((c) => c !== city)
+                            )
+                          }
+                        />
+                        <Label htmlFor={id}>{city}</Label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3 items-center">
                 <Label htmlFor="count">Number of winners</Label>
                 <Input 
                   id="count" 
                   type="number" 
                   min={1} 
-                  max={Math.max(entries.length, 1)} 
+                  max={Math.max(filteredEntries.length, 1)} 
                   value={count} 
                   onChange={(e) => setCount(parseInt(e.target.value || "1", 10))} 
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {entries.length} registered users available
+                {filteredEntries.length} registered users available in selected cities
               </p>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={pickWinners}>Pick Randomly</Button>

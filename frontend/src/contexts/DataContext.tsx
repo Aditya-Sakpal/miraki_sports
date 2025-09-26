@@ -1,6 +1,6 @@
 // React context for managing centralized data across components
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { fetchAllData, ApiDataItem } from '@/services/api';
+import { fetchAllData, ApiDataItem, fetchWinnersFromDb } from '@/services/api';
 import { 
   transformToEntries, 
   transformToChartData, 
@@ -157,7 +157,16 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
           setRawData(response.data);
           const transformedEntries = transformToEntries(response.data);
           const transformedChartData = transformToChartData(response.data);
-          const transformedStatsData = transformToStatsData(response.data, []);
+          // Fetch persisted winners from MongoDB and set in context
+          let persistedWinners = [] as Winner[];
+          try {
+            const winnersDocs = await fetchWinnersFromDb();
+            persistedWinners = winnersDocs.map((w) => ({ id: w.id, name: w.name, phone: w.phone, city: w.city, email: w.email }));
+            setWinnersState(persistedWinners);
+          } catch (winErr) {
+            console.warn('Failed to fetch winners from DB:', winErr);
+          }
+          const transformedStatsData = transformToStatsData(response.data, persistedWinners);
           
           setEntries(transformedEntries);
           setChartData(transformedChartData);
