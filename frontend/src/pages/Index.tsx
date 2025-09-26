@@ -28,7 +28,7 @@ const Index = () => {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === "pass@123") {
+    if (password === "@cwc2025") {
       setAuthSession(); // Store in session storage
       setAuthenticated(true); // This will trigger data fetch in context
       setPasswordError("");

@@ -102,6 +102,22 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     if (authenticated) {
       // Fetch data immediately when authenticated, force auth bypass since state might not be updated yet
       refreshData(true);
+      // Also fetch winners from the MongoDB mini server
+      (async () => {
+        try {
+          const winnersDocs = await fetchWinnersFromDb();
+          const persistedWinners = winnersDocs.map((w) => ({
+            id: w.id,
+            name: w.name,
+            phone: w.phone,
+            city: w.city,
+            email: w.email,
+          }));
+          setWinnersState(persistedWinners);
+        } catch (err) {
+          console.warn('Failed to fetch winners from DB after auth:', err);
+        }
+      })();
     } else {
       // Clear data when not authenticated
       setRawData([]);
