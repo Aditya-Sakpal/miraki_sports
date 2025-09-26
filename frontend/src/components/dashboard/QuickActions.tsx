@@ -39,8 +39,8 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
   const CITY_OPTIONS = ["Mumbai", "Indore", "Guwahati", "Visakhapatnam"];
   const [selectedCities, setSelectedCities] = useState<string[]>(CITY_OPTIONS);
 
-  const selectedCitySet = new Set(selectedCities.map((c) => c.toLowerCase()));
-  const filteredEntries = entries.filter((e) => selectedCitySet.has((e.city || "").toLowerCase()));
+  const selectedCitySet = new Set(selectedCities.map((c) => c?.toLowerCase()));
+  const filteredEntries = entries.filter((e) => selectedCitySet.has((e.city || "")?.toLowerCase()));
 
   const pickWinners = () => {
     if (selectedCities.length === 0) {
@@ -222,7 +222,7 @@ export function QuickActions({ winners, setWinners, onWinnersUpdated, isAuthenti
                 <Label>Filter by cities</Label>
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {CITY_OPTIONS.map((city) => {
-                    const id = `city-${city.toLowerCase()}`;
+                    const id = `city-${city?.toLowerCase()}`;
                     return (
                       <div key={city} className="flex items-center space-x-2">
                         <Checkbox

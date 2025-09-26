@@ -37,10 +37,10 @@ export function RecentActivityTable({ isAuthenticated }: RecentActivityTableProp
   const pageSize = 10;
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
+    const q = query?.toLowerCase();
     return entries.filter((e) =>
       (status === "All" || e.status === status) &&
-      (e.name.toLowerCase().includes(q) || e.phone.includes(q) || e.city.toLowerCase().includes(q))
+      (e.name.toLowerCase().includes(q) || e.phone.includes(q) || e?.city?.toLowerCase()?.includes(q))
     );
   }, [entries, query, status]);
 
