@@ -8,7 +8,12 @@ import { MongoClient, ServerApiVersion } from 'mongodb';
 const app = express();
 const PORT = process.env.PORT || 5055;
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.options('*', cors());
 app.use(express.json({ limit: '1mb' }));
 
 // MongoDB connection
