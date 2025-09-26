@@ -47,7 +47,7 @@ export const transformToEntries = (apiData: ApiDataItem[]): Entry[] => {
     email: item.email,
     code: item.code,
     isWinner: false, // Default to false, can be updated based on business logic
-  }));
+  })) as Entry[];
   console.log('Transformed entries result:', result);
   return result;
 };
@@ -80,8 +80,9 @@ export const transformToChartData = (apiData: ApiDataItem[]): ChartData => {
 
   // Contest performance (mock data based on codes)
   const codeMap = new Map<string, number>();
+  console.log('Code map:', codeMap);
   apiData.forEach((item) => {
-    const code = item.code.toUpperCase();
+    const code = item?.code?.toUpperCase();
     codeMap.set(code, (codeMap.get(code) || 0) + 1);
   });
   
