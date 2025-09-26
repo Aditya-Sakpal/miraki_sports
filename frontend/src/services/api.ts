@@ -71,7 +71,7 @@ export interface WinnerDoc {
   email?: string;
 }
 
-const WINNERS_API_BASE = (import.meta as any).env?.VITE_WINNERS_API_BASE || 'http://localhost:5055';
+const WINNERS_API_BASE = (import.meta as any).env?.VITE_WINNERS_API_BASE || 'https://miraki-sports.onrender.com';
 
 export async function saveWinners(winners: WinnerDoc[]): Promise<void> {
   const res = await fetch(`${WINNERS_API_BASE}/winners`, {
